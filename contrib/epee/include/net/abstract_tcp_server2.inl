@@ -1219,10 +1219,6 @@ namespace net_utils
   template<typename T>
   bool connection<T>::add_ref()
   {
-    // Opacra: weak_from_this().lock() returns empty for a connection that is already being
-    // destroyed, where shared_from_this() threw boost::bad_weak_ptr. Same result, but no
-    // exception: the exception hook logged a 20-line stack trace for every such case, about
-    // 100 MB a day on a public seed.
     auto self = connection<T>::weak_from_this().lock();
     if (!self)
       return false;
