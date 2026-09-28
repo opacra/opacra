@@ -36,7 +36,7 @@ Other systems: build from source (README.md in the source archive).
 This is a development build with the development chain identity. Do not use it for a
 public launch; follow docs/LAUNCH_CHECKLIST.md.
 EOF
-(cd "$STAGE" && sha256sum "$BIN_DIR"/tacitad "$BIN_DIR"/tacita-wallet-cli "$BIN_DIR"/tacita-wallet-rpc > "$BIN_DIR/SHA256SUMS")
+(cd "$STAGE/$BIN_DIR" && sha256sum tacitad tacita-wallet-cli tacita-wallet-rpc > SHA256SUMS)
 tar -C "$STAGE" -czf "$OUT/$BIN_DIR.tar.gz" "$BIN_DIR"
 rm -rf "$STAGE"
 
