@@ -50,6 +50,25 @@ Run 2026-09-28 14:28:03 to 2026-09-28 15:33:43 with `contrib/testnet/functional_
 | replayed 128 blocks: every difficulty matches LWMA-1 reference | pass |  |
 | replayed 128 blocks: every reward matches emission+slow-start+fees | pass |  |
 
+## External miner: XMRig
+
+After the functional test, XMRig 6.26.0 (built from source, unmodified) mined against node 0
+in daemon (solo) mode with no built-in miner running:
+
+```
+./xmrig -o 127.0.0.1:31001 --daemon -u Ta2FKW2Rb1Qe... --coin monero -t 2
+ * POOL #1      127.0.0.1:31001 coin Monero
+ net      new job from 127.0.0.1:31001 diff 11790 algo rx/0 height 143 (1 tx)
+ randomx  dataset ready (11841 ms)
+ cpu      accepted (1/0) diff 11790 (19 ms)
+ cpu      accepted (2/0) diff 11731 (13 ms)
+ cpu      accepted (3/0) diff 12042 (14 ms)
+ miner    speed 10s/60s/15m 683.0 n/a n/a H/s max 698.3 H/s
+```
+
+Over two runs XMRig added 18 blocks (heights 128 to 146), all accepted by every node.
+`--coin monero` only selects the block format and algorithm; Tacita uses both unchanged.
+
 ## What this does not cover
 
 - Behaviour under real-world latency, many peers, or adversarial miners (use the public testnet).
