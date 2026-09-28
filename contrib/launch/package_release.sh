@@ -46,6 +46,11 @@ tar -C "$(dirname "$ROOT")" --exclude="$(basename "$ROOT")/build" --exclude="$(b
     --exclude='__pycache__' --transform "s,^$(basename "$ROOT"),$SRC_DIR," \
     -czf "$OUT/$SRC_DIR.tar.gz" "$(basename "$ROOT")"
 
+# 2b. the same source without git metadata, xz-compressed (smaller; builds the same)
+tar -C "$(dirname "$ROOT")" --exclude="$(basename "$ROOT")/build" --exclude="$(basename "$ROOT")/dist" \
+    --exclude='__pycache__' --exclude='.git' --transform "s,^$(basename "$ROOT"),$SRC_DIR," \
+    -cJf "$OUT/$SRC_DIR-nogit.tar.xz" "$(basename "$ROOT")"
+
 # 3. patch series against upstream Monero
 PATCH_DIR="$(mktemp -d)/tacita-patches-vs-monero-v0.18.5.1"
 mkdir -p "$PATCH_DIR"
@@ -53,5 +58,5 @@ git format-patch -q "$BASE_COMMIT"..HEAD -o "$PATCH_DIR"
 git diff --stat "$BASE_COMMIT"..HEAD -- src > "$PATCH_DIR/DIFFSTAT-src.txt"
 (cd "$(dirname "$PATCH_DIR")" && tar -czf "$OUT/tacita-patches-vs-monero-v0.18.5.1.tar.gz" "$(basename "$PATCH_DIR")")
 
-(cd "$OUT" && sha256sum ./*.tar.gz > SHA256SUMS.txt)
+(cd "$OUT" && sha256sum ./*.tar.gz ./*.tar.xz > SHA256SUMS.txt)
 ls -la "$OUT"
