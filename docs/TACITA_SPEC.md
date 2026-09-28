@@ -14,12 +14,13 @@ Tor/I2P support, LMDB storage, pruning, RPC APIs (method names unchanged).
 | Proof of work | RandomX (`rx/0`), seed epoch 2048 blocks, lag 64 | unchanged |
 | Difficulty algorithm | LWMA-1, N = 60 (30 min) | `src/cryptonote_basic/difficulty.cpp` |
 | Startup difficulty | block 1: 1; blocks 2–12: 10,000 (`DIFFICULTY_STARTUP_GUESS`); LWMA from block 13 with the blocks available | |
-| Future time limit | 600 s (Monero: 7,200 s) | `CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT` |
+| Future time limit | 180 s (Monero: 7,200 s) | `CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT` |
 | Median-time-past window | 11 blocks (Monero: 60) | `BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW` |
 | Coinbase maturity | 60 blocks (~30 min) | `CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW` |
 | Spendable age | 10 blocks (~5 min) | `CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE` |
 | Ring size | 16 (enforced exactly) | v16 rules |
 | Consensus version | v1 at genesis only, v16 from block 1 | `src/hardforks/hardforks.cpp` |
+| Block weight during slow start | At most the effective median (≥ 300 kB): no block may enter the size-penalty zone before height 20,160 | `get_block_reward_at_height()` |
 | Block weight / fees | Monero dynamic block weight and 2021 fee scaling | unchanged |
 | Decimals | 12 | unchanged |
 
@@ -119,19 +120,29 @@ Consensus:
 7. `src/hardforks/hardforks.cpp`: compact fork tables `{1 @ 0, 16 @ 1}` for all networks.
 8. `src/blocks/checkpoints.dat`: emptied (Monero fast-sync hashes removed);
    `src/checkpoints/checkpoints.cpp`: Monero checkpoints removed.
+9. `src/cryptonote_core/cryptonote_tx_utils.cpp`, `src/cryptonote_basic/cryptonote_format_utils.cpp`:
+   Monero's hard-coded proof-of-work and block-id exceptions for its block 202612 removed
+   (left in place they would let any block at Tacita height 202612 skip proof of work).
+10. `src/cryptonote_core/blockchain.cpp` (`build_alt_chain`): side chains use only the newest
+    11 timestamps for the median-time-past check, exactly like the main chain.
+11. Slow start also forbids blocks above the effective median (the reward is too small for
+    Monero's size penalty to deter chain bloat); `tx_pool.cpp` leaves room for the coinbase.
 
 Network and wallet:
 
-9. `src/coin_network.h` (new): seed nodes, DNS seeds, Tor/I2P seeds, DNS checkpoint,
+12. `src/coin_network.h` (new): seed nodes, DNS seeds, Tor/I2P seeds, DNS checkpoint,
    update and blocklist domains, download URLs, DNSSEC probe host. All empty or
    placeholders; nothing points at Monero infrastructure.
-10. `src/p2p/net_node.h/.inl`, `src/checkpoints/checkpoints.cpp`, `src/common/updates.cpp`,
+13. `src/p2p/net_node.h/.inl`, `src/checkpoints/checkpoints.cpp`, `src/common/updates.cpp`,
     `src/common/dns_utils.cpp`: read the lists above.
-11. `src/wallet/wallet2.cpp`: hard-fork checks look versions up by value (the table
+14. `src/wallet/wallet2.cpp`: hard-fork checks look versions up by value (the table
     skips versions 2–15); height estimate without Monero's rollback offsets; "recent
     output" window computed from the block time.
-12. `src/simplewallet/simplewallet.cpp/.h`: `donate` uses `TACITA_DONATION_ADDR`
+15. `src/simplewallet/simplewallet.cpp/.h`: `donate` uses `TACITA_DONATION_ADDR`
     (empty = disabled) instead of the Monero donation address.
+16. `src/cryptonote_core/cryptonote_core.cpp`: sync batch size no longer keyed to Monero's v4
+    height; the block-rate monitor reads enough blocks for 30 s targets and computes its
+    Poisson terms in log space (they overflowed to NaN above ~170 blocks).
 
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`tacitad`, `tacita-wallet-cli`, `tacita-wallet-rpc`,

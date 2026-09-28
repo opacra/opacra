@@ -69,6 +69,9 @@ mkdir -p build/release && cd build/release
 cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DUSE_DEVICE_TREZOR=OFF ../..
 make -j"$(nproc)" daemon simplewallet wallet_rpc_server
 ls bin/   # tacitad  tacita-wallet-cli  tacita-wallet-rpc
+
+# consensus regression tests for the rules Tacita changed (emission, slow start, LWMA, forks)
+make tacita_consensus_tests && ./bin/tacita_consensus_tests
 ```
 
 Or with Docker: `docker build -t tacita -f contrib/launch/Dockerfile .`

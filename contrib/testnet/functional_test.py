@@ -70,7 +70,8 @@ def start_wallet_rpc(i, daemon_idx):
     log_file = open(DATA / f"wallet-rpc{i}.log", "w")
     p = subprocess.Popen([str(BIN / "tacita-wallet-rpc"), "--wallet-dir", str(wdir), "--rpc-bind-port", str(port),
                           "--disable-rpc-login", "--daemon-address", f"127.0.0.1:{rpc_port(daemon_idx)}",
-                          "--trusted-daemon", "--log-level", "0", "--non-interactive"],
+                          "--trusted-daemon", "--log-level", "0", "--non-interactive",
+                          "--log-file", str(DATA / f"wallet-rpc{i}.core.log")],
                          stdout=log_file, stderr=subprocess.STDOUT)
     w = Wallet(port)
     w.wait_ready()
@@ -144,8 +145,10 @@ def verify_chain(d):
 def main():
     DATA.mkdir(parents=True, exist_ok=True)
     log(f"binaries: {BIN}")
-    localnet("wipe")
-    localnet("start")
+    resume = os.environ.get("RESUME") == "1"   # attach to a running localnet + wallet RPCs
+    if not resume:
+        localnet("wipe")
+        localnet("start")
     nodes = [Daemon(rpc_port(i)) for i in range(3)]
     for n in nodes:
         n.wait_ready()
@@ -159,21 +162,28 @@ def main():
     # --- wallets
     procs, wallets, addrs = [], [], []
     for i in range(3):
-        p, w = start_wallet_rpc(i, daemon_idx=i)
-        procs.append(p)
-        w.rpc("create_wallet", filename=f"w{i}", password="", language="English")
+        if resume:
+            w = Wallet(32000 + i)
+        else:
+            p, w = start_wallet_rpc(i, daemon_idx=i)
+            procs.append(p)
+            w.rpc("create_wallet", filename=f"w{i}", password="", language="English")
         addrs.append(w.rpc("get_address")["address"])
         wallets.append(w)
     report["addresses"] = addrs
     check("standard addresses start with 'Ta'", all(a.startswith("Ta") for a in addrs), addrs[0][:12] + "...")
-    sub = wallets[2].rpc("create_address", account_index=0, label="shop checkout")["address"]
+    if resume:
+        sub = wallets[2].rpc("get_address", account_index=0, address_index=[1])["addresses"][0]["address"]
+    else:
+        sub = wallets[2].rpc("create_address", account_index=0, label="shop checkout")["address"]
     check("subaddresses start with 'Ts'", sub.startswith("Ts"), sub[:12] + "...")
     integ = wallets[1].rpc("make_integrated_address")["integrated_address"]
     check("integrated addresses start with 'Ti'", integ.startswith("Ti"), integ[:12] + "...")
 
     # --- mine
     miner = nodes[0]
-    start_mining(miner, addrs[0], MINER_THREADS)
+    if not miner.other("mining_status").get("active"):
+        start_mining(miner, addrs[0], MINER_THREADS)
     t0 = time.time()
     wait_height(miner, MIN_HEIGHT_FOR_TX, "(mining to wallet 1)")
     report["time_to_min_height_s"] = round(time.time() - t0)

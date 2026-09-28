@@ -40,7 +40,7 @@ journalctl -u tacitad -f
 
 ## Keep the clock right
 
-Nodes reject blocks timestamped more than 10 minutes in their future (Monero allows 2
+Nodes reject blocks timestamped more than 3 minutes in their future (Monero allows 2
 hours). A node whose clock is badly off will reject valid blocks and fall out of sync.
 Run NTP (`chrony` or `systemd-timesyncd`).
 

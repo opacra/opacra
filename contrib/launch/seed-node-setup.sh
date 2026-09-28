@@ -14,7 +14,7 @@ fi
 apt-get update -qq
 apt-get install -y -qq chrony ufw libboost-chrono1.83.0t64 libboost-filesystem1.83.0 libboost-program-options1.83.0 libboost-serialization1.83.0 libboost-thread1.83.0 libhidapi-libusb0 libreadline8t64 libsodium23 libssl3t64 libunbound8 libusb-1.0-0 libzmq5
 
-# accurate clock matters: blocks more than 10 minutes in the future are rejected
+# accurate clock matters: blocks more than 3 minutes in the future are rejected
 systemctl enable --now chrony
 
 id tacita >/dev/null 2>&1 || useradd --system --home /var/lib/tacita --shell /usr/sbin/nologin tacita
