@@ -66,7 +66,7 @@ in daemon (solo) mode with no built-in miner running:
  miner    speed 10s/60s/15m 683.0 n/a n/a H/s max 698.3 H/s
 ```
 
-Over two runs XMRig added 18 blocks (heights 128 to 146), all accepted by every node.
+Over two runs XMRig added 18 blocks (heights 128 to 145); all three nodes accepted them and share the same tip.
 `--coin monero` only selects the block format and algorithm; Tacita uses both unchanged.
 
 ## What this does not cover
