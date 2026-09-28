@@ -45,15 +45,31 @@
 #define CURRENT_TRANSACTION_VERSION                     2
 #define CURRENT_BLOCK_MAJOR_VERSION                     1
 #define CURRENT_BLOCK_MINOR_VERSION                     0
-#define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              60*60*2
-#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
+// ---------------------------------------------------------------------------
+// Tacita consensus parameters (differences from Monero are marked "Tacita:")
+// ---------------------------------------------------------------------------
+#define COIN_NAME                                       "Tacita"
+#define COIN_TICKER                                     "TCA"
 
-#define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
+// Tacita: blocks may be at most 10 minutes ahead of a node's clock (Monero: 2 h).
+// A tight future-time limit is recommended with LWMA difficulty; run NTP on nodes.
+#define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              (60*10)
+#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10  // 10 blocks = 5 minutes at 30 s
 
-// MONEY_SUPPLY - total number coins to be generated
-#define MONEY_SUPPLY                                    ((uint64_t)(-1))
-#define EMISSION_SPEED_FACTOR_PER_MINUTE                (20)
-#define FINAL_SUBSIDY_PER_MINUTE                        ((uint64_t)300000000000) // 3 * pow(10, 11)
+// Tacita: median-time-past window of 11 blocks (Monero: 60), as recommended for LWMA
+#define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               11
+
+// Tacita emission: smooth curve over a 10,000,000 TCA main supply, then a
+// permanent tail emission.  reward = (MONEY_SUPPLY - generated) >> 22 per block,
+// never less than TAIL_EMISSION_REWARD.  With 30 s blocks, half of the main
+// supply is emitted in ~2.8 years; the tail starts after ~15 years.
+#define MONEY_SUPPLY                                    ((uint64_t)10000000 * (uint64_t)1000000000000) // 10M TCA in atomic units
+#define EMISSION_SPEED_FACTOR_PER_BLOCK                 (22)
+#define TAIL_EMISSION_REWARD                            ((uint64_t)50000000000) // 0.05 TCA per block (~52,600 TCA/year)
+// Tacita fair launch: block rewards ramp up linearly from 0 over the first
+// SLOW_START_BLOCKS blocks (~7 days), so nobody can capture a large share of
+// coins before the wider community has joined mining.
+#define SLOW_START_BLOCKS                               ((uint64_t)20160)
 
 #define CRYPTONOTE_REWARD_BLOCKS_WINDOW                 100
 #define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2    60000 //size of block (bytes) after which reward for block calculated using block size
@@ -77,12 +93,21 @@
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
 
-#define DIFFICULTY_TARGET_V2                            120  // seconds
-#define DIFFICULTY_TARGET_V1                            60  // seconds - before first fork
-#define DIFFICULTY_WINDOW                               720 // blocks
-#define DIFFICULTY_LAG                                  15  // !!!
-#define DIFFICULTY_CUT                                  60  // timestamps to cut after sorting
-#define DIFFICULTY_BLOCKS_COUNT                         DIFFICULTY_WINDOW + DIFFICULTY_LAG
+// Tacita: 30-second blocks for every block version
+#define DIFFICULTY_TARGET_V2                            30  // seconds
+#define DIFFICULTY_TARGET_V1                            30  // seconds
+// Tacita: LWMA-1 difficulty (zawy12) instead of Monero's sorted/cut window.
+// N = 60 blocks (30 minutes); the algorithm reads the last N+1 blocks.  A short
+// window reacts within ~60 blocks to hash-rate jumps (rented or profit-switching
+// hash power), which is the main difficulty risk for a young PoW chain.
+#define DIFFICULTY_WINDOW                               60  // blocks (LWMA N)
+#define DIFFICULTY_LAG                                  0   // unused with LWMA
+#define DIFFICULTY_CUT                                  0   // unused with LWMA
+#define DIFFICULTY_BLOCKS_COUNT                         (DIFFICULTY_WINDOW + 1)
+// Until the chain has this many blocks (after genesis) difficulty is fixed at
+// DIFFICULTY_STARTUP_GUESS; LWMA then adapts with the blocks available.
+#define DIFFICULTY_STARTUP_BLOCKS                       12
+#define DIFFICULTY_STARTUP_GUESS                        10000
 
 
 #define CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V1   DIFFICULTY_TARGET_V1 * CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS
@@ -162,7 +187,7 @@
 
 #define RPC_IP_FAILS_BEFORE_BLOCK                       3
 
-#define CRYPTONOTE_NAME                         "bitmonero"
+#define CRYPTONOTE_NAME                         "tacita"
 #define CRYPTONOTE_BLOCKCHAINDATA_FILENAME      "data.mdb"
 #define CRYPTONOTE_BLOCKCHAINDATA_LOCK_FILENAME "lock.mdb"
 #define P2P_NET_DATA_FILENAME                   "p2pstate.bin"
@@ -224,16 +249,20 @@ namespace config
   uint64_t const DEFAULT_DUST_THRESHOLD = ((uint64_t)2000000000); // 2 * pow(10, 9)
   uint64_t const BASE_REWARD_CLAMP_THRESHOLD = ((uint64_t)100000000); // pow(10, 8)
 
-  uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 18;
-  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 19;
-  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 42;
-  uint16_t const P2P_DEFAULT_PORT = 18080;
-  uint16_t const RPC_DEFAULT_PORT = 18081;
-  uint16_t const ZMQ_RPC_DEFAULT_PORT = 18082;
+  // Tacita mainnet identity (regenerate with contrib/coin-identity/coinid.py before launch)
+  uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 27806;            // addresses start with "Ta"
+  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 22047; // integrated addresses start with "Ti"
+  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 19744;         // subaddresses start with "Ts"
+  uint16_t const P2P_DEFAULT_PORT = 29960;
+  uint16_t const RPC_DEFAULT_PORT = 29961;
+  uint16_t const ZMQ_RPC_DEFAULT_PORT = 29962;
   boost::uuids::uuid const NETWORK_ID = { {
-      0x12 ,0x30, 0xF1, 0x71 , 0x61, 0x04 , 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x10
-    } }; // Bender's nightmare
-  std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbff8883f8024f5142ee494ffbbd08807121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+      0xFC, 0xD0, 0x81, 0x3C, 0x02, 0x94, 0x01, 0x7F, 0x88, 0x20, 0x08, 0xC3, 0xB6, 0x09, 0x14, 0xC6
+    } };
+  // Genesis coinbase: reward = MONEY_SUPPLY >> EMISSION_SPEED_FACTOR_PER_BLOCK, paid to an
+  // unspendable key; tx extra carries the message
+  // "Tacita mainnet genesis | 2026-09-28 | Private by default, auditable by choice."
+  std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b14502f4de612a91d79154fb76bcc7a6c4de93826eb43395c5ff4614fb7fe53f15e7aa7101d50312d2a99922d423351cb6be7158241b63ea4cbf72682c3d999e7e39f0a02b024e546163697461206d61696e6e65742067656e65736973207c20323032362d30392d3238207c20507269766174652062792064656661756c742c20617564697461626c652062792063686f6963652e";
   uint32_t const GENESIS_NONCE = 10000;
 
   // Hash domain separators
@@ -256,7 +285,7 @@ namespace config
   const unsigned char HASH_KEY_CLSAG_ROUND[] = "CLSAG_round";
   const unsigned char HASH_KEY_CLSAG_AGG_0[] = "CLSAG_agg_0";
   const unsigned char HASH_KEY_CLSAG_AGG_1[] = "CLSAG_agg_1";
-  const char HASH_KEY_MESSAGE_SIGNING[] = "MoneroMessageSignature";
+  const char HASH_KEY_MESSAGE_SIGNING[] = "TacitaMessageSignature"; // Tacita: own domain, no cross-chain replay
   const unsigned char HASH_KEY_MM_SLOT = 'm';
   const constexpr char HASH_KEY_MULTISIG_TX_PRIVKEYS_SEED[] = "multisig_tx_privkeys_seed";
   const constexpr char HASH_KEY_MULTISIG_TX_PRIVKEYS[] = "multisig_tx_privkeys";
@@ -267,31 +296,31 @@ namespace config
 
   namespace testnet
   {
-    uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
-    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
-    uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
-    uint16_t const P2P_DEFAULT_PORT = 28080;
-    uint16_t const RPC_DEFAULT_PORT = 28081;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT = 28082;
+    uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 8479;             // "Te"
+    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 11935; // "Tf"
+    uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 15263;         // "Tg"
+    uint16_t const P2P_DEFAULT_PORT = 39960;
+    uint16_t const RPC_DEFAULT_PORT = 39961;
+    uint16_t const ZMQ_RPC_DEFAULT_PORT = 39962;
     boost::uuids::uuid const NETWORK_ID = { {
-        0x12 ,0x30, 0xF1, 0x71 , 0x61, 0x04 , 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x11
-      } }; // Bender's daydream
-    std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbff8883f8024f5142ee494ffbbd08807121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+        0xF7, 0x80, 0xA7, 0x8B, 0xDE, 0xFE, 0xBC, 0x2C, 0x0B, 0x69, 0xF0, 0x12, 0xED, 0xE8, 0xF2, 0x6D
+      } };
+    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b14502fc48145a35146107978044446cc0e9d35357f7c5627f4f6c1b774e1daea49d6b4601e131e3ca86394ec728876b738f82bcd52af3cc5a5818f206c753b06b61ffae0f022354616369746120746573746e65742067656e65736973207c20323032362d30392d3238";
     uint32_t const GENESIS_NONCE = 10001;
   }
 
   namespace stagenet
   {
-    uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 24;
-    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 25;
-    uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 36;
-    uint16_t const P2P_DEFAULT_PORT = 38080;
-    uint16_t const RPC_DEFAULT_PORT = 38081;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT = 38082;
+    uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 28440;            // "Sa"
+    uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 22809; // "Si"
+    uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 20378;         // "Ss"
+    uint16_t const P2P_DEFAULT_PORT = 49960;
+    uint16_t const RPC_DEFAULT_PORT = 49961;
+    uint16_t const ZMQ_RPC_DEFAULT_PORT = 49962;
     boost::uuids::uuid const NETWORK_ID = { {
-        0x12 ,0x30, 0xF1, 0x71 , 0x61, 0x04 , 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x12
-      } }; // Bender's daydream
-    std::string const GENESIS_TX = "013c01ff0001ffffffffffff0302df5d56da0c7d643ddd1ce61901c7bdc5fb1738bfe39fbe69c28a3a7032729c0f2101168d0c4ca86fb55a4cf6a36d31431be1c53a3bd7411bb24e8832410289fa6f3b";
+        0x60, 0x37, 0xC3, 0xAD, 0x7B, 0x93, 0x09, 0x0A, 0x13, 0x3C, 0x99, 0xC7, 0xE7, 0x39, 0x17, 0x1B
+      } };
+    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b14502034f40c141c694543ce53b608925fbe2b8bfd59bd32f1d616a0d56f012b6b6cd47012b410908f066c086c42fa966669164348624a363125bbbac1bdf1676c7064d3302245461636974612073746167656e65742067656e65736973207c20323032362d30392d3238";
     uint32_t const GENESIS_NONCE = 10002;
   }
 }

@@ -32,9 +32,11 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "int-util.h"
+#include "misc_log_ex.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "difficulty.h"
@@ -120,46 +122,12 @@ namespace cryptonote {
   }
 
   uint64_t next_difficulty_64(std::vector<std::uint64_t> timestamps, std::vector<uint64_t> cumulative_difficulties, size_t target_seconds) {
-
-    if(timestamps.size() > DIFFICULTY_WINDOW)
-    {
-      timestamps.resize(DIFFICULTY_WINDOW);
-      cumulative_difficulties.resize(DIFFICULTY_WINDOW);
-    }
-
-
-    size_t length = timestamps.size();
-    assert(length == cumulative_difficulties.size());
-    if (length <= 1) {
-      return 1;
-    }
-    static_assert(DIFFICULTY_WINDOW >= 2, "Window is too small");
-    assert(length <= DIFFICULTY_WINDOW);
-    sort(timestamps.begin(), timestamps.end());
-    size_t cut_begin, cut_end;
-    static_assert(2 * DIFFICULTY_CUT <= DIFFICULTY_WINDOW - 2, "Cut length is too large");
-    if (length <= DIFFICULTY_WINDOW - 2 * DIFFICULTY_CUT) {
-      cut_begin = 0;
-      cut_end = length;
-    } else {
-      cut_begin = (length - (DIFFICULTY_WINDOW - 2 * DIFFICULTY_CUT) + 1) / 2;
-      cut_end = cut_begin + (DIFFICULTY_WINDOW - 2 * DIFFICULTY_CUT);
-    }
-    assert(/*cut_begin >= 0 &&*/ cut_begin + 2 <= cut_end && cut_end <= length);
-    uint64_t time_span = timestamps[cut_end - 1] - timestamps[cut_begin];
-    if (time_span == 0) {
-      time_span = 1;
-    }
-    uint64_t total_work = cumulative_difficulties[cut_end - 1] - cumulative_difficulties[cut_begin];
-    assert(total_work > 0);
-    uint64_t low, high;
-    mul(total_work, target_seconds, low, high);
-    // blockchain errors "difficulty overhead" if this function returns zero.
-    // TODO: consider throwing an exception instead
-    if (high != 0 || low + time_span - 1 < low) {
+    // Tacita: kept for API compatibility (tests/tools); uses the same LWMA-1 rule
+    std::vector<difficulty_type> wide(cumulative_difficulties.begin(), cumulative_difficulties.end());
+    const difficulty_type d = next_difficulty(std::move(timestamps), std::move(wide), target_seconds);
+    if (d > std::numeric_limits<uint64_t>::max())
       return 0;
-    }
-    return (low + time_span - 1) / time_span;
+    return d.convert_to<uint64_t>();
   }
 
 #if defined(_MSC_VER)
@@ -200,43 +168,65 @@ namespace cryptonote {
       return check_hash_128(hash, difficulty);
   }
 
+  // Tacita: LWMA-1 difficulty algorithm
+  // Copyright (c) 2017-2019 Zawy (zawy12), MIT License
+  // https://github.com/zawy12/difficulty-algorithms/issues/3
+  //
+  // Linearly weighted moving average of solve times over the last N blocks: the most
+  // recent block has weight N, the oldest weight 1.  It reacts to hashrate changes
+  // within a few blocks while staying stable, which matters for a young PoW chain with
+  // fast (30 s) blocks.  Integer arithmetic only, so every node computes the same value.
+  //
+  // Inputs are the timestamps and cumulative difficulties of the most recent blocks in
+  // chain order (oldest first), genesis excluded.  Only the last N+1 entries are used.
   difficulty_type next_difficulty(std::vector<uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds) {
-    //cutoff DIFFICULTY_LAG
-    if(timestamps.size() > DIFFICULTY_WINDOW)
+    CHECK_AND_ASSERT_THROW_MES(timestamps.size() == cumulative_difficulties.size(), "LWMA: timestamps/difficulties size mismatch");
+
+    const size_t window = DIFFICULTY_WINDOW + 1;
+    if (timestamps.size() > window)
     {
-      timestamps.resize(DIFFICULTY_WINDOW);
-      cumulative_difficulties.resize(DIFFICULTY_WINDOW);
+      timestamps.erase(timestamps.begin(), timestamps.end() - window);
+      cumulative_difficulties.erase(cumulative_difficulties.begin(), cumulative_difficulties.end() - window);
     }
 
-
-    size_t length = timestamps.size();
-    assert(length == cumulative_difficulties.size());
-    if (length <= 1) {
+    const size_t length = timestamps.size();
+    // Genesis (height 0) and block 1 see no previous blocks: difficulty 1, as in Monero.
+    if (length == 0)
       return 1;
+    // Startup: a fixed, deliberately low guess until a few blocks exist.
+    if (length < DIFFICULTY_STARTUP_BLOCKS)
+      return DIFFICULTY_STARTUP_GUESS;
+
+    const uint64_t T = target_seconds;
+    const uint64_t N = length - 1;  // number of solve times available (<= DIFFICULTY_WINDOW)
+
+    // Weighted sum of solve times.  Out-of-sequence timestamps are treated as a 1 second
+    // solve time and every solve time is capped at 6*T, which bounds the effect of any
+    // single manipulated timestamp.
+    uint64_t L = 0;
+    uint64_t previous_timestamp = timestamps[0];
+    for (uint64_t i = 1; i <= N; ++i)
+    {
+      const uint64_t this_timestamp = timestamps[i] > previous_timestamp ? timestamps[i] : previous_timestamp + 1;
+      L += i * std::min<uint64_t>(6 * T, this_timestamp - previous_timestamp);
+      previous_timestamp = this_timestamp;
     }
-    static_assert(DIFFICULTY_WINDOW >= 2, "Window is too small");
-    assert(length <= DIFFICULTY_WINDOW);
-    sort(timestamps.begin(), timestamps.end());
-    size_t cut_begin, cut_end;
-    static_assert(2 * DIFFICULTY_CUT <= DIFFICULTY_WINDOW - 2, "Cut length is too large");
-    if (length <= DIFFICULTY_WINDOW - 2 * DIFFICULTY_CUT) {
-      cut_begin = 0;
-      cut_end = length;
-    } else {
-      cut_begin = (length - (DIFFICULTY_WINDOW - 2 * DIFFICULTY_CUT) + 1) / 2;
-      cut_end = cut_begin + (DIFFICULTY_WINDOW - 2 * DIFFICULTY_CUT);
-    }
-    assert(/*cut_begin >= 0 &&*/ cut_begin + 2 <= cut_end && cut_end <= length);
-    uint64_t time_span = timestamps[cut_end - 1] - timestamps[cut_begin];
-    if (time_span == 0) {
-      time_span = 1;
-    }
-    difficulty_type total_work = cumulative_difficulties[cut_end - 1] - cumulative_difficulties[cut_begin];
-    assert(total_work > 0);
-    boost::multiprecision::uint256_t res =  (boost::multiprecision::uint256_t(total_work) * target_seconds + time_span - 1) / time_span;
-    if(res > max128bit)
-      return 0; // to behave like previous implementation, may be better return max128bit?
-    return res.convert_to<difficulty_type>();
+    // Keep the result bounded when blocks arrive (nearly) instantly
+    const uint64_t L_min = N * N * T / 20;
+    if (L < L_min)
+      L = L_min;
+
+    // next_D = avg_D * T * (N(N+1)/2) / L * 0.99, with avg_D = total_work / N
+    //        = total_work * T * (N+1) * 99 / (200 * L)
+    const difficulty_type total_work = cumulative_difficulties[N] - cumulative_difficulties[0];
+    const boost::multiprecision::uint256_t numerator = boost::multiprecision::uint256_t(total_work) * T * (N + 1) * 99;
+    const boost::multiprecision::uint256_t denominator = boost::multiprecision::uint256_t(200) * L;
+    boost::multiprecision::uint256_t next_d = numerator / denominator;
+    if (next_d < 1)
+      next_d = 1;
+    if (next_d > max128bit)
+      return 0; // blockchain reports "difficulty overhead"; unreachable in practice
+    return next_d.convert_to<difficulty_type>();
   }
 
   std::string hex(difficulty_type v)

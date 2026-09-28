@@ -127,7 +127,8 @@ namespace cryptonote
     in.height = height;
 
     uint64_t block_reward;
-    if(!get_block_reward(median_weight, current_block_weight, already_generated_coins, block_reward, hard_fork_version))
+    // Tacita: includes the launch slow-start ramp (must match Blockchain::validate_miner_transaction)
+    if(!get_block_reward_at_height(median_weight, current_block_weight, already_generated_coins, block_reward, hard_fork_version, height))
     {
       LOG_PRINT_L0("Block is too big");
       return false;

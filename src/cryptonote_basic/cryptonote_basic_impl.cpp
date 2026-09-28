@@ -81,15 +81,16 @@ namespace cryptonote {
   }
   //-----------------------------------------------------------------------------------------------
   bool get_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version) {
-    static_assert(DIFFICULTY_TARGET_V2%60==0&&DIFFICULTY_TARGET_V1%60==0,"difficulty targets must be a multiple of 60");
-    const int target = version < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
-    const int target_minutes = target / 60;
-    const int emission_speed_factor = EMISSION_SPEED_FACTOR_PER_MINUTE - (target_minutes-1);
-
-    uint64_t base_reward = (MONEY_SUPPLY - already_generated_coins) >> emission_speed_factor;
-    if (base_reward < FINAL_SUBSIDY_PER_MINUTE*target_minutes)
+    // Tacita: emission is defined per block (every version uses the same 30 s target),
+    // avoiding Monero's per-minute scaling which truncates to zero for sub-minute blocks.
+    static_assert(MONEY_SUPPLY > 0, "MONEY_SUPPLY must be positive");
+    static_assert(TAIL_EMISSION_REWARD > 0, "tail emission must be positive");
+    if (already_generated_coins > MONEY_SUPPLY)
+      already_generated_coins = MONEY_SUPPLY;
+    uint64_t base_reward = (MONEY_SUPPLY - already_generated_coins) >> EMISSION_SPEED_FACTOR_PER_BLOCK;
+    if (base_reward < TAIL_EMISSION_REWARD)
     {
-      base_reward = FINAL_SUBSIDY_PER_MINUTE*target_minutes;
+      base_reward = TAIL_EMISSION_REWARD;
     }
 
     uint64_t full_reward_zone = get_min_block_weight(version);
@@ -124,6 +125,28 @@ namespace cryptonote {
     assert(reward_lo < base_reward);
 
     reward = reward_lo;
+    return true;
+  }
+  //-----------------------------------------------------------------------------------------------
+  uint64_t apply_slow_start(uint64_t reward, uint64_t height)
+  {
+    // Tacita fair launch: linear ramp from 0 to the full reward over SLOW_START_BLOCKS.
+    // The genesis block (height 0) is exempt; its output is unspendable anyway.
+    if (height == 0 || height >= SLOW_START_BLOCKS)
+      return reward;
+    uint64_t product_hi;
+    const uint64_t product_lo = mul128(reward, height, &product_hi);
+    uint64_t quotient_hi, quotient_lo;
+    div128_64(product_hi, product_lo, SLOW_START_BLOCKS, &quotient_hi, &quotient_lo, NULL, NULL);
+    assert(quotient_hi == 0);
+    return quotient_lo;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool get_block_reward_at_height(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height)
+  {
+    if (!get_block_reward(median_weight, current_block_weight, already_generated_coins, reward, version))
+      return false;
+    reward = apply_slow_start(reward, height);
     return true;
   }
   //------------------------------------------------------------------------------------
