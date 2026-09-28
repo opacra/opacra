@@ -5,7 +5,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${1:-$ROOT/dist}"
-VERSION="$(grep -o 'DEF_MONERO_VERSION "[^"]*"' "$ROOT/src/version.cpp.in" | cut -d'"' -f2)"
+VERSION="$(grep -o 'DEF_MONERO_VERSION "[0-9.]*"' "$ROOT/src/version.cpp.in" | head -1 | cut -d'"' -f2)"
 BASE_COMMIT="4f92268"   # Monero v0.18.5.1
 mkdir -p "$OUT"
 cd "$ROOT"
