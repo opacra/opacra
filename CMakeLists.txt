@@ -1263,6 +1263,13 @@ else()
   message(STATUS "Not building tests")
 endif()
 
+# Tacita: consensus regression tests for the rules this fork changed (always available;
+# built only when the target is requested: make tacita_consensus_tests)
+option(BUILD_TACITA_TESTS "Add the Tacita consensus regression test target" ON)
+if(BUILD_TACITA_TESTS)
+  add_subdirectory(tests/tacita)
+endif()
+
 if(BUILD_DEBUG_UTILITIES)
   message(STATUS "Building debug utilities")
 else()

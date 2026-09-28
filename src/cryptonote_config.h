@@ -51,9 +51,11 @@
 #define COIN_NAME                                       "Tacita"
 #define COIN_TICKER                                     "TCA"
 
-// Tacita: blocks may be at most 10 minutes ahead of a node's clock (Monero: 2 h).
-// A tight future-time limit is recommended with LWMA difficulty; run NTP on nodes.
-#define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              (60*10)
+// Tacita: blocks may be at most 3 minutes (6 block targets) ahead of a node's clock
+// (Monero: 2 h).  LWMA treats a backwards step after a forward-dated block as a 1 s
+// solve time, so a loose limit lets a few miners inflate difficulty; 180 s keeps
+// the effect small.  Nodes must run NTP.
+#define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              (60*3)
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10  // 10 blocks = 5 minutes at 30 s
 
 // Tacita: median-time-past window of 11 blocks (Monero: 60), as recommended for LWMA

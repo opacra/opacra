@@ -1817,6 +1817,11 @@ bool Blockchain::build_alt_chain(const crypto::hash &prev_id, std::list<block_ex
       alt_chain.push_front(std::move(bei));
       found = m_db->get_alt_block(bei.bl.prev_id, &data, &blob);
     }
+    // Tacita: timestamps are newest first; keep only the window the main chain uses,
+    // so a block gets the same median-time-past check on a side chain as on the main
+    // chain (Monero's 60-block window hid this for side chains shorter than 61 blocks).
+    if (timestamps.size() > BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW)
+      timestamps.resize(BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW);
 
     // if block to be added connects to known blocks that aren't part of the
     // main chain -- that is, if we're adding on to an alternate chain

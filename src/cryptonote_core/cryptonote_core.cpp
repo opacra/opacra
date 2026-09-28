@@ -29,6 +29,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <boost/algorithm/string.hpp>
+#include <cmath>
 #include <boost/uuid/nil_generator.hpp>
 
 #include "string_tools.h"
@@ -947,7 +948,8 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   size_t core::get_block_sync_size(uint64_t height) const
   {
-    static const uint64_t quick_height = m_nettype == TESTNET ? 801219 : m_nettype == MAINNET ? 1220516 : 0;
+    // Tacita: every block from height 1 is a modern (v16) block
+    static const uint64_t quick_height = 0;
     size_t res = 0;
     if (block_sync_size > 0)
       res = block_sync_size;
@@ -1790,7 +1792,9 @@ namespace cryptonote
   static double probability1(unsigned int blocks, unsigned int expected)
   {
     // https://www.umass.edu/wsp/resources/poisson/#computing
-    return pow(expected, blocks) / (factorial(blocks) * exp(expected));
+    // Tacita: computed in log space; with 30 s blocks the counts exceed 170, where
+    // factorial() and pow() overflow to inf and the ratio becomes NaN.
+    return exp(blocks * log((double)expected) - lgamma(blocks + 1.0) - expected);
   }
   //-----------------------------------------------------------------------------------------------
   static double probability(unsigned int blocks, unsigned int expected)
@@ -1818,7 +1822,7 @@ namespace cryptonote
     }
 
     static constexpr double threshold = 1. / (864000 / DIFFICULTY_TARGET_V2); // one false positive every 10 days
-    static constexpr unsigned int max_blocks_checked = 150;
+    static constexpr unsigned int max_blocks_checked = 3 * 5400 / DIFFICULTY_TARGET_V2; // Tacita: 3x the longest window's expected count
 
     const time_t now = time(NULL);
     const std::vector<time_t> timestamps = m_blockchain_storage.get_last_block_timestamps(max_blocks_checked);

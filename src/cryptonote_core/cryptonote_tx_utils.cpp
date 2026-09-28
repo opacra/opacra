@@ -725,13 +725,8 @@ namespace cryptonote
 
   bool get_block_longhash(const Blockchain *pbc, const blobdata& bd, crypto::hash& res, const uint64_t height, const int major_version, const crypto::hash *seed_hash, const int miners)
   {
-    // block 202612 bug workaround
-    if (height == 202612)
-    {
-      static const std::string longhash_202612 = "84f64766475d51837ac9efbef1926486e58563c95a19fef4aec3254f03000000";
-      epee::string_tools::hex_to_pod(longhash_202612, res);
-      return true;
-    }
+    // Tacita: Monero's hard-coded proof-of-work for its block 202612 is removed.
+    // Every Tacita block, at every height, is checked with its real hash.
     if (major_version >= RX_BLOCK_VERSION)
     {
       crypto::hash hash;

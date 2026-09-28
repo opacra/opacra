@@ -1576,6 +1576,14 @@ namespace cryptonote
     size_t max_total_weight_pre_v5 = (130 * median_weight) / 100 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
     size_t max_total_weight_v5 = 2 * median_weight - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
     size_t max_total_weight = version >= 5 ? max_total_weight_v5 : max_total_weight_pre_v5;
+    // Tacita: during the launch slow start blocks must stay at or below the effective
+    // median (see get_block_reward_at_height); leave room for the coinbase transaction.
+    if (height > 0 && height < SLOW_START_BLOCKS)
+    {
+      const size_t effective_median = std::max<size_t>(median_weight, get_min_block_weight(version));
+      const size_t slow_start_max = effective_median > CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE ? effective_median - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE : 0;
+      max_total_weight = std::min(max_total_weight, slow_start_max);
+    }
     std::unordered_set<crypto::key_image> k_images;
 
     LOG_PRINT_L2("Filling block template, median weight " << median_weight << ", " << m_txs_by_fee_and_receive_time.size() << " txes in the pool");
