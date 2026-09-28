@@ -111,14 +111,14 @@ using namespace cryptonote;
 // used to target a given block weight (additional outputs may be added on top to build fee)
 #define TX_WEIGHT_TARGET(bytes) (bytes*2/3)
 
-#define UNSIGNED_TX_PREFIX "Monero unsigned tx set\005"
-#define SIGNED_TX_PREFIX "Monero signed tx set\005"
-#define MULTISIG_UNSIGNED_TX_PREFIX "Monero multisig unsigned tx set\001"
+#define UNSIGNED_TX_PREFIX "Tacita unsigned tx set\005"
+#define SIGNED_TX_PREFIX "Tacita signed tx set\005"
+#define MULTISIG_UNSIGNED_TX_PREFIX "Tacita multisig unsigned tx set\001"
 
 #define RECENT_OUTPUT_RATIO (0.5) // 50% of outputs are from the recent zone
 #define RECENT_OUTPUT_DAYS (1.8) // last 1.8 day makes up the recent zone (taken from monerolink.pdf, Miller et al)
 #define RECENT_OUTPUT_ZONE ((time_t)(RECENT_OUTPUT_DAYS * 86400))
-#define RECENT_OUTPUT_BLOCKS (RECENT_OUTPUT_DAYS * 720)
+#define RECENT_OUTPUT_BLOCKS (RECENT_OUTPUT_DAYS * (86400 / DIFFICULTY_TARGET_V2)) // Tacita: blocks per day from the block target
 
 #define FEE_ESTIMATE_GRACE_BLOCKS 10 // estimate fee valid for that many blocks
 
@@ -127,11 +127,11 @@ using namespace cryptonote;
 #define SUBADDRESS_LOOKAHEAD_MAJOR 50
 #define SUBADDRESS_LOOKAHEAD_MINOR 200
 
-#define KEY_IMAGE_EXPORT_FILE_MAGIC "Monero key image export\003"
+#define KEY_IMAGE_EXPORT_FILE_MAGIC "Tacita key image export\003"
 
-#define MULTISIG_EXPORT_FILE_MAGIC "Monero multisig export\001"
+#define MULTISIG_EXPORT_FILE_MAGIC "Tacita multisig export\001"
 
-#define OUTPUT_EXPORT_FILE_MAGIC "Monero output export\004"
+#define OUTPUT_EXPORT_FILE_MAGIC "Tacita output export\004"
 
 #define SEGREGATION_FORK_HEIGHT 99999999
 #define TESTNET_SEGREGATION_FORK_HEIGHT 99999999
@@ -155,7 +155,7 @@ using namespace cryptonote;
 
 static const std::string MULTISIG_SIGNATURE_MAGIC = "SigMultisigPkV1";
 
-static const std::string ASCII_OUTPUT_MAGIC = "MoneroAsciiDataV1";
+static const std::string ASCII_OUTPUT_MAGIC = "TacitaAsciiDataV1";
 
 static const std::string BACKGROUND_WALLET_SUFFIX = ".background";
 
@@ -2226,8 +2226,8 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
     if (!m_encrypt_keys_after_refresh && !m_processing_background_cache)
     {
       boost::optional<epee::wipeable_string> pwd = m_callback->on_get_password(pool ? "output found in pool" : "output received");
-      THROW_WALLET_EXCEPTION_IF(!pwd, error::password_needed, tr("Password is needed to compute key image for incoming monero"));
-      THROW_WALLET_EXCEPTION_IF(!verify_password(*pwd), error::password_needed, tr("Invalid password: password is needed to compute key image for incoming monero"));
+      THROW_WALLET_EXCEPTION_IF(!pwd, error::password_needed, tr("Password is needed to compute key image for incoming tacita"));
+      THROW_WALLET_EXCEPTION_IF(!verify_password(*pwd), error::password_needed, tr("Invalid password: password is needed to compute key image for incoming tacita"));
       m_encrypt_keys_after_refresh.reset(new wallet_keys_unlocker(*this, m_ask_password == AskPasswordToDecrypt && !m_unattended && !m_watch_only, *pwd));
     }
   }
@@ -3467,15 +3467,34 @@ void check_block_hard_fork_version(cryptonote::network_type nettype, uint8_t hf_
   const hardfork_t *wallet_hard_forks = nettype == TESTNET ? testnet_hard_forks
     : nettype == STAGENET ? stagenet_hard_forks : mainnet_hard_forks;
 
-  wallet_is_outdated = static_cast<size_t>(hf_version) > wallet_num_hard_forks;
+  // Tacita: fork tables may skip versions (the chain starts at v16), so look the
+  // version up instead of indexing the table by version number.
+  wallet_is_outdated = hf_version > wallet_hard_forks[wallet_num_hard_forks - 1].version;
+  daemon_is_outdated = false;
   if (wallet_is_outdated)
     return;
 
+  size_t idx = wallet_num_hard_forks;
+  for (size_t n = 0; n < wallet_num_hard_forks; ++n)
+  {
+    if (wallet_hard_forks[n].version == hf_version)
+    {
+      idx = n;
+      break;
+    }
+  }
+  if (idx == wallet_num_hard_forks)
+  {
+    // a block version this wallet never expects on this network
+    daemon_is_outdated = true;
+    return;
+  }
+
   // check block's height falls within wallet's expected range for block's given version
-  uint64_t start_height = hf_version == 1 ? 0 : wallet_hard_forks[hf_version - 1].height;
-  uint64_t end_height = static_cast<size_t>(hf_version) + 1 > wallet_num_hard_forks
+  const uint64_t start_height = idx == 0 ? 0 : wallet_hard_forks[idx].height;
+  const uint64_t end_height = idx + 1 >= wallet_num_hard_forks
     ? std::numeric_limits<uint64_t>::max()
-    : wallet_hard_forks[hf_version].height;
+    : wallet_hard_forks[idx + 1].height;
 
   daemon_is_outdated = height < start_height || height >= end_height;
 }
@@ -6425,7 +6444,8 @@ bool wallet2::check_hard_fork_version(cryptonote::network_type nettype, const st
     // Non-updated daemons won't return daemon_hard_forks in response to
     // get_version. Fall back to extra call to get_hard_fork_info by version.
     uint64_t daemon_fork_height;
-    get_hard_fork_info(wallet_num_hard_forks-1/* wallet expects "double fork" pattern */, daemon_fork_height);
+    // Tacita: ask about the newest fork version this wallet knows (tables may skip versions)
+    get_hard_fork_info(wallet_hard_forks[wallet_num_hard_forks-1].version, daemon_fork_height);
     bool daemon_outdated = daemon_fork_height == std::numeric_limits<uint64_t>::max();
 
     if (daemon_is_outdated)
@@ -6433,7 +6453,7 @@ bool wallet2::check_hard_fork_version(cryptonote::network_type nettype, const st
 
     if (daemon_outdated)
     {
-      uint64_t daemon_missed_fork_height = wallet_hard_forks[wallet_num_hard_forks-2].height;
+      uint64_t daemon_missed_fork_height = wallet_hard_forks[wallet_num_hard_forks-1].height;
       bool daemon_missed_fork = height >= daemon_missed_fork_height || target_height >= daemon_missed_fork_height;
       if (daemon_missed_fork)
         return false;
@@ -13583,8 +13603,8 @@ uint64_t wallet2::get_approximate_blockchain_height() const
   const time_t now = time(NULL);
   if (now > fork_time)
     approx_blockchain_height += (now - fork_time) / seconds_per_block;
-  // testnet and stagenet got some huge rollbacks, so the estimation is way off
-  const uint64_t approximate_rolled_back_blocks = m_nettype == TESTNET ? 26600 : m_nettype == STAGENET ? 48600 : 33600;
+  // Tacita: no historical rollbacks to compensate for (Monero subtracted 26600-48600 blocks here)
+  const uint64_t approximate_rolled_back_blocks = 0;
   if (approx_blockchain_height > approximate_rolled_back_blocks)
     approx_blockchain_height -= approximate_rolled_back_blocks;
   LOG_PRINT_L2("Calculated blockchain height: " << approx_blockchain_height);
@@ -15603,7 +15623,7 @@ std::string wallet2::make_uri(const std::string &address, const std::string &pay
     return std::string();
   }
 
-  std::string uri = "monero:" + address;
+  std::string uri = "tacita:" + address;
   unsigned int n_fields = 0;
 
   if (!payment_id.empty())
@@ -15632,9 +15652,9 @@ std::string wallet2::make_uri(const std::string &address, const std::string &pay
 //----------------------------------------------------------------------------------------------------
 bool wallet2::parse_uri(const std::string &uri, std::string &address, std::string &payment_id, uint64_t &amount, std::string &tx_description, std::string &recipient_name, std::vector<std::string> &unknown_parameters, std::string &error)
 {
-  if (uri.substr(0, 7) != "monero:")
+  if (uri.substr(0, 7) != "tacita:")
   {
-    error = std::string("URI has wrong scheme (expected \"monero:\"): ") + uri;
+    error = std::string("URI has wrong scheme (expected \"tacita:\"): ") + uri;
     return false;
   }
 
@@ -15868,8 +15888,8 @@ std::vector<std::pair<uint64_t, uint64_t>> wallet2::estimate_backlog(const std::
     uint64_t nblocks_max = minfee_weight / full_reward_zone;
     uint64_t nblocks_min = maxfee_weight / full_reward_zone;
     MDEBUG("estimate_backlog: given a block weight of " << full_reward_zone << " you will need to wait "
-      << nblocks_min << " when paying " << our_fee_byte_max << " piconero per byte and " << nblocks_max
-      << " when paying " << our_fee_byte_min << " piconeros per byte.");
+      << nblocks_min << " when paying " << our_fee_byte_max << " picotac per byte and " << nblocks_max
+      << " when paying " << our_fee_byte_min << " picotacs per byte.");
     blocks.push_back(std::make_pair(nblocks_min, nblocks_max));
   }
   return blocks;
@@ -15920,7 +15940,7 @@ mms::multisig_wallet_state wallet2::get_multisig_wallet_state() const
   state.num_transfer_details = m_transfers.size();
   if (state.multisig)
   {
-    THROW_WALLET_EXCEPTION_IF(!m_original_keys_available, error::wallet_internal_error, "MMS use not possible because own original Monero address not available");
+    THROW_WALLET_EXCEPTION_IF(!m_original_keys_available, error::wallet_internal_error, "MMS use not possible because own original Tacita address not available");
     state.address = m_original_address;
     state.view_secret_key = m_original_view_secret_key;
   }

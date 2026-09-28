@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "common/dns_utils.h"
+#include "coin_network.h"
 // check local first (in the event of static or in-source compilation of libunbound)
 #include "unbound.h"
 
@@ -295,7 +296,7 @@ DNSResolver::DNSResolver() : m_data(new DNSResolverData())
     // should be a valid DNSSEC record, and switch to known good
     // DNSSEC resolvers if verification fails
     bool available, valid;
-    static const char *probe_hostname = "updates.moneropulse.org";
+    const char *probe_hostname = coin_network::dnssec_probe_hostname();
     auto records = get_txt_record(probe_hostname, available, valid);
     if (!valid)
     {
@@ -419,7 +420,7 @@ namespace dns_utils
 std::string address_from_txt_record(const std::string& s)
 {
   // make sure the txt record has "oa1:xmr" and find it
-  auto pos = s.find("oa1:xmr");
+  auto pos = s.find("oa1:tca");
   if (pos == std::string::npos)
     return {};
   // search from there to find "recipient_address="

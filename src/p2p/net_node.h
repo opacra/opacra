@@ -44,6 +44,7 @@
 #include <vector>
 
 #include "cryptonote_config.h"
+#include "coin_network.h"
 #include "cryptonote_protocol/fwd.h"
 #include "cryptonote_protocol/levin_notify.h"
 #include "warnings.h"
@@ -295,12 +296,8 @@ namespace nodetool
     virtual void clear_used_stripe_peers();
 
   private:
-    const std::vector<std::string> m_seed_nodes_list =
-    { "seeds.moneroseeds.se"
-    , "seeds.moneroseeds.ae.org"
-    , "seeds.moneroseeds.ch"
-    , "seeds.moneroseeds.li"
-    };
+    // Tacita: DNS seed domains are configured in coin_network.h
+    const std::vector<std::string> m_seed_nodes_list = coin_network::dns_seed_domains();
 
     bool islimitup=false;
     bool islimitdown=false;
