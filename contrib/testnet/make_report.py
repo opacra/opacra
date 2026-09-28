@@ -40,22 +40,27 @@ ax1.set_title("Difficulty found the network's hash rate within about 15 blocks",
               color=INK, fontsize=12, fontweight="bold", pad=22)
 ax1.text(0, 1.02, "Block difficulty (LWMA-1, N = 60)", transform=ax1.transAxes, color=QUIET, fontsize=9.5)
 ax1.set_ylim(0, max(diffs) * 1.15)
-ax1.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v/1000:.0f}k"))
+ax1.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: "0" if v == 0 else f"{v/1000:.0f}k"))
 
 ax2.scatter(solve_h, solve, s=10, color=QUIET, alpha=0.35, linewidths=0, label="Each block")
 ax2.plot(solve_h, roll, color=SERIES, linewidth=2, label="20-block average")
 ax2.axhline(30, color=QUIET, linestyle=(0, (4, 4)), linewidth=1)
-ax2.text(heights[-1], 31.5, "30 s target", color=QUIET, fontsize=9, ha="right", va="bottom")
+ax2.text(1.01, 30, "30 s\ntarget", transform=ax2.get_yaxis_transform(), color=QUIET, fontsize=9, ha="left", va="center")
+split = report.get("reorg", {}).get("split_height")
+if split:
+    for ax in (ax1, ax2):
+        ax.axvspan(split, heights[-1] + 0.5, color=GRID, alpha=0.6, linewidth=0)
+    ax1.text(split + 0.5, ax1.get_ylim()[1] * 0.97, "split test:\nhalf hash rate", color=QUIET, fontsize=8.5, ha="left", va="top")
 mean_after = report.get("final_stats_after_startup", {}).get("mean_solvetime")
 ax2.set_title(f"Blocks averaged {mean_after:.1f} s after the startup phase", loc="left",
               color=INK, fontsize=12, fontweight="bold", pad=22)
 ax2.text(0, 1.02, "Seconds between blocks", transform=ax2.transAxes, color=QUIET, fontsize=9.5)
 ax2.set_ylim(0, min(max(solve) * 1.05, 240))
 ax2.set_xlabel("Block height", color=QUIET)
-leg = ax2.legend(loc="upper right", frameon=False, fontsize=9)
+leg = ax2.legend(loc="upper left", frameon=False, fontsize=9, ncol=2)
 for t in leg.get_texts():
     t.set_color(QUIET)
-fig.tight_layout(h_pad=2.5)
+fig.tight_layout(h_pad=2.5, rect=(0, 0, 0.96, 1))
 img = ROOT / "docs" / "images" / "test-network.png"
 img.parent.mkdir(parents=True, exist_ok=True)
 fig.savefig(img, dpi=150, facecolor=SURFACE)
