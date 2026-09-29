@@ -1,7 +1,9 @@
 # Mining Tacita
 
 Tacita uses **RandomX**, the same CPU-oriented proof of work as Monero. Any modern
-desktop or laptop CPU can mine. GPUs are inefficient and there are no ASICs.
+desktop or laptop CPU can mine, and GPUs are inefficient. One RandomX ASIC is on the
+market (Bitmain's Antminer X5, about 212 kH/s at 1,350 W), but it is only about 3x more
+power-efficient than desktop CPUs, so CPU mining stays viable.
 
 - Block time: 30 seconds. Block reward: 2.384186 TCA at launch, ramping up linearly
   from zero over the first 7 days (20,160 blocks).
