@@ -1,4 +1,4 @@
-# Running a Tacita node
+# Running a Opacra node
 
 ## Hardware
 
@@ -23,19 +23,19 @@ for home nodes; seed nodes should keep the full chain.
 ## Quick setup on Ubuntu 24.04 (VPS)
 
 ```bash
-scp tacita-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,tacitad.service,tacita.conf} root@VPS:
-ssh root@VPS 'bash seed-node-setup.sh tacita-linux-x64.tar.gz'
+scp opacra-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,opacrad.service,opacra.conf} root@VPS:
+ssh root@VPS 'bash seed-node-setup.sh opacra-linux-x64.tar.gz'
 ```
 
-This installs the runtime libraries, `chrony` for clock sync, a `tacita` system user,
-the binaries in `/opt/tacita`, config in `/etc/tacita/tacita.conf`, data in
-`/var/lib/tacita`, the systemd unit and a firewall rule for 29960.
+This installs the runtime libraries, `chrony` for clock sync, an `opacra` system user,
+the binaries in `/opt/opacra`, config in `/etc/opacra/opacra.conf`, data in
+`/var/lib/opacra`, the systemd unit and a firewall rule for 29960.
 
 ```bash
-systemctl status tacitad
-journalctl -u tacitad -f
-/opt/tacita/tacitad status        # height, sync state, peers
-/opt/tacita/tacitad print_cn      # connections
+systemctl status opacrad
+journalctl -u opacrad -f
+/opt/opacra/opacrad status        # height, sync state, peers
+/opt/opacra/opacrad print_cn      # connections
 ```
 
 ## Keep the clock right
@@ -57,7 +57,7 @@ reverse proxy with TLS if you publish it as `node.yourcoin.org`.
 
 ## Tor / I2P
 
-Everything in `docs/ANONYMITY_NETWORKS.md` applies; replace `monerod` with `tacitad` and
+Everything in `docs/ANONYMITY_NETWORKS.md` applies; replace `monerod` with `opacrad` and
 port 18083 with a port of your choice (for example 29963). Onion seed addresses go in
 `src/coin_network.h`.
 

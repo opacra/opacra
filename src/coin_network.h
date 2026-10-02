@@ -1,4 +1,4 @@
-// Copyright (c) 2026, The Tacita Project
+// Copyright (c) 2026, The Opacra Project
 // Portions Copyright (c) 2014-2022, The Monero Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are
@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------------------
 // LAUNCH-TIME NETWORK ENDPOINTS
 //
-// Everything a node contacts on its own lives here, so that no Tacita node ever talks to
+// Everything a node contacts on its own lives here, so that no Opacra node ever talks to
 // Monero infrastructure (seed nodes, MoneroPulse DNS, getmonero.org downloads).
 // Fill these in before building release binaries (see docs/LAUNCH_CHECKLIST.md).
 // Empty lists simply disable the feature; nodes can always be pointed at peers with
@@ -41,7 +41,7 @@ namespace coin_network
     }
   }
 
-  // DNS names whose A records list seed node IPs (mainnet only).  e.g. "seeds.tacita.example"
+  // DNS names whose A records list seed node IPs (mainnet only).  e.g. "seeds.opacra.org"
   inline std::vector<std::string> dns_seed_domains()
   {
     return {};
@@ -68,8 +68,8 @@ namespace coin_network
   inline std::vector<std::string> update_dns_domains() { return {}; }
 
   // Base URLs used by --check-updates=download (must end with '/')
-  inline std::string download_base_url_user() { return "https://downloads.tacita.example/"; }
-  inline std::string download_base_url_auto() { return "https://updates.tacita.example/"; }
+  inline std::string download_base_url_user() { return "https://downloads.opacra.org/"; }
+  inline std::string download_base_url_auto() { return "https://updates.opacra.org/"; }
 
   // DNSSEC-signed TXT records listing IPs/subnets to ban (mainnet only)
   inline std::vector<std::string> blocklist_dns_domains() { return {}; }

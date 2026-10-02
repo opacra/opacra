@@ -46,29 +46,29 @@
 #define CURRENT_BLOCK_MAJOR_VERSION                     1
 #define CURRENT_BLOCK_MINOR_VERSION                     0
 // ---------------------------------------------------------------------------
-// Tacita consensus parameters (differences from Monero are marked "Tacita:")
+// Opacra consensus parameters (differences from Monero are marked "Opacra:")
 // ---------------------------------------------------------------------------
-#define COIN_NAME                                       "Tacita"
-#define COIN_TICKER                                     "TCA"
+#define COIN_NAME                                       "Opacra"
+#define COIN_TICKER                                     "OPCA"
 
-// Tacita: blocks may be at most 3 minutes (6 block targets) ahead of a node's clock
+// Opacra: blocks may be at most 3 minutes (6 block targets) ahead of a node's clock
 // (Monero: 2 h).  LWMA treats a backwards step after a forward-dated block as a 1 s
 // solve time, so a loose limit lets a few miners inflate difficulty; 180 s keeps
 // the effect small.  Nodes must run NTP.
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              (60*3)
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10  // 10 blocks = 5 minutes at 30 s
 
-// Tacita: median-time-past window of 11 blocks (Monero: 60), as recommended for LWMA
+// Opacra: median-time-past window of 11 blocks (Monero: 60), as recommended for LWMA
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               11
 
-// Tacita emission: smooth curve over a 10,000,000 TCA main supply, then a
+// Opacra emission: smooth curve over a 10,000,000 OPCA main supply, then a
 // permanent tail emission.  reward = (MONEY_SUPPLY - generated) >> 22 per block,
 // never less than TAIL_EMISSION_REWARD.  With 30 s blocks, half of the main
 // supply is emitted in ~2.8 years; the tail starts after ~15 years.
-#define MONEY_SUPPLY                                    ((uint64_t)10000000 * (uint64_t)1000000000000) // 10M TCA in atomic units
+#define MONEY_SUPPLY                                    ((uint64_t)10000000 * (uint64_t)1000000000000) // 10M OPCA in atomic units
 #define EMISSION_SPEED_FACTOR_PER_BLOCK                 (22)
-#define TAIL_EMISSION_REWARD                            ((uint64_t)50000000000) // 0.05 TCA per block (~52,600 TCA/year)
-// Tacita fair launch: block rewards ramp up linearly from 0 over the first
+#define TAIL_EMISSION_REWARD                            ((uint64_t)50000000000) // 0.05 OPCA per block (~52,600 OPCA/year)
+// Opacra fair launch: block rewards ramp up linearly from 0 over the first
 // SLOW_START_BLOCKS blocks (~7 days), so nobody can capture a large share of
 // coins before the wider community has joined mining.
 #define SLOW_START_BLOCKS                               ((uint64_t)20160)
@@ -95,10 +95,10 @@
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
 
-// Tacita: 30-second blocks for every block version
+// Opacra: 30-second blocks for every block version
 #define DIFFICULTY_TARGET_V2                            30  // seconds
 #define DIFFICULTY_TARGET_V1                            30  // seconds
-// Tacita: LWMA-1 difficulty (zawy12) instead of Monero's sorted/cut window.
+// Opacra: LWMA-1 difficulty (zawy12) instead of Monero's sorted/cut window.
 // N = 60 blocks (30 minutes); the algorithm reads the last N+1 blocks.  A short
 // window reacts within ~60 blocks to hash-rate jumps (rented or profit-switching
 // hash power), which is the main difficulty risk for a young PoW chain.
@@ -189,7 +189,7 @@
 
 #define RPC_IP_FAILS_BEFORE_BLOCK                       3
 
-#define CRYPTONOTE_NAME                         "tacita"
+#define CRYPTONOTE_NAME                         "opacra"
 #define CRYPTONOTE_BLOCKCHAINDATA_FILENAME      "data.mdb"
 #define CRYPTONOTE_BLOCKCHAINDATA_LOCK_FILENAME "lock.mdb"
 #define P2P_NET_DATA_FILENAME                   "p2pstate.bin"
@@ -251,20 +251,20 @@ namespace config
   uint64_t const DEFAULT_DUST_THRESHOLD = ((uint64_t)2000000000); // 2 * pow(10, 9)
   uint64_t const BASE_REWARD_CLAMP_THRESHOLD = ((uint64_t)100000000); // pow(10, 8)
 
-  // Tacita mainnet identity (regenerate with contrib/coin-identity/coinid.py before launch)
-  uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 27806;            // addresses start with "Ta"
-  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 22047; // integrated addresses start with "Ti"
-  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 19744;         // subaddresses start with "Ts"
+  // Opacra mainnet identity (regenerate with contrib/coin-identity/coinid.py before launch)
+  uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 30598;            // addresses start with "Pa"
+  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 24839; // integrated addresses start with "Pi"
+  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 22408;         // subaddresses start with "Ps"
   uint16_t const P2P_DEFAULT_PORT = 29960;
   uint16_t const RPC_DEFAULT_PORT = 29961;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 29962;
   boost::uuids::uuid const NETWORK_ID = { {
-      0xFC, 0xD0, 0x81, 0x3C, 0x02, 0x94, 0x01, 0x7F, 0x88, 0x20, 0x08, 0xC3, 0xB6, 0x09, 0x14, 0xC6
+      0xBC, 0x2D, 0x89, 0x3E, 0x96, 0xB8, 0xF6, 0x91, 0x19, 0x9F, 0x37, 0x3C, 0xE5, 0xBC, 0x47, 0x18
     } };
   // Genesis coinbase: reward = MONEY_SUPPLY >> EMISSION_SPEED_FACTOR_PER_BLOCK, paid to an
   // unspendable key; tx extra carries the message
-  // "Tacita mainnet genesis | 2026-09-28 | Private by default, auditable by choice."
-  std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b14502f4de612a91d79154fb76bcc7a6c4de93826eb43395c5ff4614fb7fe53f15e7aa7101d50312d2a99922d423351cb6be7158241b63ea4cbf72682c3d999e7e39f0a02b024e546163697461206d61696e6e65742067656e65736973207c20323032362d30392d3238207c20507269766174652062792064656661756c742c20617564697461626c652062792063686f6963652e";
+  // "Opacra mainnet genesis | 2026-10-02 | Private by default, auditable by choice."
+  std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b145029f76646388993c91ca84209b815bff6467bc631500f3a86c2aa332572de9d94d7101aa0a93586b60454f425d180db01995ed2e688be793cbef62f08e324821400609024e4f7061637261206d61696e6e65742067656e65736973207c20323032362d31302d3032207c20507269766174652062792064656661756c742c20617564697461626c652062792063686f6963652e";
   uint32_t const GENESIS_NONCE = 10000;
 
   // Hash domain separators
@@ -287,7 +287,7 @@ namespace config
   const unsigned char HASH_KEY_CLSAG_ROUND[] = "CLSAG_round";
   const unsigned char HASH_KEY_CLSAG_AGG_0[] = "CLSAG_agg_0";
   const unsigned char HASH_KEY_CLSAG_AGG_1[] = "CLSAG_agg_1";
-  const char HASH_KEY_MESSAGE_SIGNING[] = "TacitaMessageSignature"; // Tacita: own domain, no cross-chain replay
+  const char HASH_KEY_MESSAGE_SIGNING[] = "OpacraMessageSignature"; // Opacra: own domain, no cross-chain replay
   const unsigned char HASH_KEY_MM_SLOT = 'm';
   const constexpr char HASH_KEY_MULTISIG_TX_PRIVKEYS_SEED[] = "multisig_tx_privkeys_seed";
   const constexpr char HASH_KEY_MULTISIG_TX_PRIVKEYS[] = "multisig_tx_privkeys";
@@ -305,9 +305,9 @@ namespace config
     uint16_t const RPC_DEFAULT_PORT = 39961;
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 39962;
     boost::uuids::uuid const NETWORK_ID = { {
-        0xF7, 0x80, 0xA7, 0x8B, 0xDE, 0xFE, 0xBC, 0x2C, 0x0B, 0x69, 0xF0, 0x12, 0xED, 0xE8, 0xF2, 0x6D
+        0x8F, 0xB1, 0x39, 0x6E, 0xD4, 0x92, 0xE2, 0xE5, 0xC9, 0x68, 0x25, 0x15, 0x17, 0x0B, 0x5F, 0x91
       } };
-    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b14502fc48145a35146107978044446cc0e9d35357f7c5627f4f6c1b774e1daea49d6b4601e131e3ca86394ec728876b738f82bcd52af3cc5a5818f206c753b06b61ffae0f022354616369746120746573746e65742067656e65736973207c20323032362d30392d3238";
+    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b145029f2f9831645742126ae225f9660bf52079f95792919a2a6a8bd9acb57eaf6f514601c3f0f15ec3eb910212e78b99ff0a0a701fb9d578e7942ee4f30956786de8604902234f706163726120746573746e65742067656e65736973207c20323032362d31302d3032";
     uint32_t const GENESIS_NONCE = 10001;
   }
 
@@ -320,9 +320,9 @@ namespace config
     uint16_t const RPC_DEFAULT_PORT = 49961;
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 49962;
     boost::uuids::uuid const NETWORK_ID = { {
-        0x60, 0x37, 0xC3, 0xAD, 0x7B, 0x93, 0x09, 0x0A, 0x13, 0x3C, 0x99, 0xC7, 0xE7, 0x39, 0x17, 0x1B
+        0x0F, 0x57, 0xC4, 0xD1, 0xD3, 0x44, 0x63, 0xD1, 0x3D, 0x6F, 0xFD, 0x9D, 0xD5, 0xF2, 0x40, 0x42
       } };
-    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b14502034f40c141c694543ce53b608925fbe2b8bfd59bd32f1d616a0d56f012b6b6cd47012b410908f066c086c42fa966669164348624a363125bbbac1bdf1676c7064d3302245461636974612073746167656e65742067656e65736973207c20323032362d30392d3238";
+    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b14502f7fcb1005aa2e46c3e4626b211d76d3cf0d12ff3dafdbc7b4c7c4506c524c4294701332eb62e164cd880959de076bf659ba3b9cb01e6a941ecde1a8a7d21fe178c8f02244f70616372612073746167656e65742067656e65736973207c20323032362d31302d3032";
     uint32_t const GENESIS_NONCE = 10002;
   }
 }

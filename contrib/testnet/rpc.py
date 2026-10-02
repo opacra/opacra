@@ -1,4 +1,4 @@
-"""Tiny JSON-RPC helpers for tacitad / tacita-wallet-rpc (stdlib only)."""
+"""Tiny JSON-RPC helpers for opacrad / opacra-wallet-rpc (stdlib only)."""
 import json
 import time
 import urllib.request

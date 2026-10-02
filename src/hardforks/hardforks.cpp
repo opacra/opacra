@@ -31,7 +31,7 @@
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "blockchain.hardforks"
 
-// Tacita: the chain starts directly on Monero's current consensus rules.
+// Opacra: the chain starts directly on Monero's current consensus rules.
 //   version 1  - genesis block only
 //   version 16 - every block from height 1: RingCT, CLSAG, Bulletproofs+, view tags,
 //                16-member rings, RandomX proof of work.

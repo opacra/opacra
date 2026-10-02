@@ -702,7 +702,7 @@ namespace nodetool
   template<class t_payload_net_handler>
   std::set<std::string> node_server<t_payload_net_handler>::get_ip_seed_nodes() const
   {
-    // Tacita: seed nodes come from coin_network.h (no Monero infrastructure)
+    // Opacra: seed nodes come from coin_network.h (no Monero infrastructure)
     std::set<std::string> full_addrs;
     if (m_nettype == cryptonote::FAKECHAIN)
       return full_addrs;

@@ -1565,7 +1565,7 @@ namespace cryptonote
     fee = 0;
     
     //baseline empty block
-    // Tacita: reward at this height, including the launch slow-start ramp
+    // Opacra: reward at this height, including the launch slow-start ramp
     if (!get_block_reward_at_height(median_weight, total_weight, already_generated_coins, best_coinbase, version, height))
     {
       MERROR("Failed to get block reward for empty block");
@@ -1576,7 +1576,7 @@ namespace cryptonote
     size_t max_total_weight_pre_v5 = (130 * median_weight) / 100 - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
     size_t max_total_weight_v5 = 2 * median_weight - CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE;
     size_t max_total_weight = version >= 5 ? max_total_weight_v5 : max_total_weight_pre_v5;
-    // Tacita: during the launch slow start blocks must stay at or below the effective
+    // Opacra: during the launch slow start blocks must stay at or below the effective
     // median (see get_block_reward_at_height); leave room for the coinbase transaction.
     if (height > 0 && height < SLOW_START_BLOCKS)
     {

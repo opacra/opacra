@@ -82,7 +82,7 @@ namespace cryptonote {
   }
   //-----------------------------------------------------------------------------------------------
   bool get_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version) {
-    // Tacita: emission is defined per block (every version uses the same 30 s target),
+    // Opacra: emission is defined per block (every version uses the same 30 s target),
     // avoiding Monero's per-minute scaling which truncates to zero for sub-minute blocks.
     static_assert(MONEY_SUPPLY > 0, "MONEY_SUPPLY must be positive");
     static_assert(TAIL_EMISSION_REWARD > 0, "tail emission must be positive");
@@ -131,7 +131,7 @@ namespace cryptonote {
   //-----------------------------------------------------------------------------------------------
   uint64_t apply_slow_start(uint64_t reward, uint64_t height)
   {
-    // Tacita fair launch: linear ramp from 0 to the full reward over SLOW_START_BLOCKS.
+    // Opacra fair launch: linear ramp from 0 to the full reward over SLOW_START_BLOCKS.
     // The genesis block (height 0) is exempt; its output is unspendable anyway.
     if (height == 0 || height >= SLOW_START_BLOCKS)
       return reward;
@@ -145,7 +145,7 @@ namespace cryptonote {
   //-----------------------------------------------------------------------------------------------
   bool get_block_reward_at_height(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height)
   {
-    // Tacita: while the slow start runs the block reward is too small for Monero's
+    // Opacra: while the slow start runs the block reward is too small for Monero's
     // oversized-block penalty to deter anything, so no block may enter the penalty
     // zone (weight above the effective median) until the ramp has finished.
     if (height > 0 && height < SLOW_START_BLOCKS)

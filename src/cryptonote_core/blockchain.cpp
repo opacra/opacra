@@ -1357,7 +1357,7 @@ bool Blockchain::validate_miner_transaction(const block& b, uint64_t height, siz
     get_last_n_blocks_weights(last_blocks_weights, CRYPTONOTE_REWARD_BLOCKS_WINDOW);
     median_weight = epee::misc_utils::median(last_blocks_weights);
   }
-  // Tacita: includes the launch slow-start ramp (must match construct_miner_tx)
+  // Opacra: includes the launch slow-start ramp (must match construct_miner_tx)
   if (!get_block_reward_at_height(median_weight, cumulative_block_weight, already_generated_coins, base_reward, version, height))
   {
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
@@ -1817,7 +1817,7 @@ bool Blockchain::build_alt_chain(const crypto::hash &prev_id, std::list<block_ex
       alt_chain.push_front(std::move(bei));
       found = m_db->get_alt_block(bei.bl.prev_id, &data, &blob);
     }
-    // Tacita: timestamps are newest first; keep only the window the main chain uses,
+    // Opacra: timestamps are newest first; keep only the window the main chain uses,
     // so a block gets the same median-time-past check on a side chain as on the main
     // chain (Monero's 60-block window hid this for side chains shorter than 61 blocks).
     if (timestamps.size() > BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW)

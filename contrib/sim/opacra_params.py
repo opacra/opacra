@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Reference implementations of Tacita's consensus arithmetic, bit-for-bit
+Reference implementations of Opacra's consensus arithmetic, bit-for-bit
 identical to the C++ (src/cryptonote_basic/difficulty.cpp and
 cryptonote_basic_impl.cpp).  Used to
 
@@ -106,6 +106,6 @@ def emission_table(years=(1, 2, 3, 4, 5, 10, 15, 20, 30)):
 
 
 if __name__ == "__main__":
-    print("Initial full block reward: %.6f TCA" % (base_reward(base_reward(0)) / COIN))
-    print("Reward at height 1 (slow start): %.9f TCA" % (block_reward(base_reward(0), 1) / COIN))
+    print("Initial full block reward: %.6f OPCA" % (base_reward(base_reward(0)) / COIN))
+    print("Reward at height 1 (slow start): %.9f OPCA" % (block_reward(base_reward(0), 1) / COIN))
     print("Half-life of remaining main supply: %.2f years" % (2 ** EMISSION_SPEED_FACTOR * math.log(2) / BLOCKS_PER_YEAR))

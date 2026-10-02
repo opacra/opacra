@@ -1,10 +1,10 @@
-// Copyright (c) 2026, The Tacita Project
+// Copyright (c) 2026, The Opacra Project
 // BSD-3-Clause, see LICENSE.
 //
-// Regression tests for the consensus rules Tacita changed relative to Monero:
+// Regression tests for the consensus rules Opacra changed relative to Monero:
 // per-block emission and tail, launch slow start (reward ramp and block-weight cap),
 // LWMA-1 difficulty, and the compact hard-fork tables.  No test framework needed:
-//   make tacita_consensus_tests && ./bin/tacita_consensus_tests   (exit code 0 = pass)
+//   make opacra_consensus_tests && ./bin/opacra_consensus_tests   (exit code 0 = pass)
 
 #include <cstdio>
 #include <sstream>
@@ -42,7 +42,7 @@ static void test_emission()
   // one block later the remaining supply is smaller, so is the reward
   EXPECT(cryptonote::get_block_reward(0, 0, FULL, r, 16));
   EXPECT_EQ(r, (MONEY_SUPPLY - FULL) >> 22);
-  // tail emission when the curve falls below 0.05 TCA, and at / past the cap
+  // tail emission when the curve falls below 0.05 OPCA, and at / past the cap
   EXPECT(cryptonote::get_block_reward(0, 0, MONEY_SUPPLY - (TAIL_EMISSION_REWARD << 22) + 1, r, 16));
   EXPECT_EQ(r, TAIL_EMISSION_REWARD);
   EXPECT(cryptonote::get_block_reward(0, 0, MONEY_SUPPLY, r, 16));

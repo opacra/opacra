@@ -1,4 +1,4 @@
-# Tacita technical specification
+# Opacra technical specification
 
 Base: Monero v0.18.5.1 (tag `v0.18.5.1`, commit `4f92268`). Everything not listed here
 behaves exactly as in Monero v0.18.5.1: transaction format, RingCT/CLSAG signatures,
@@ -30,8 +30,8 @@ Tor/I2P support, LMDB storage, pruning, RPC APIs (method names unchanged).
 base_reward(generated) = max( (MONEY_SUPPLY - generated) >> 22 , TAIL_EMISSION_REWARD )
 reward(height)         = base_reward * height / 20160      for 1 <= height < 20160   (slow start)
                        = base_reward                        otherwise
-MONEY_SUPPLY           = 10,000,000 TCA  (10^19 atomic units)
-TAIL_EMISSION_REWARD   = 0.05 TCA
+MONEY_SUPPLY           = 10,000,000 OPCA  (10^19 atomic units)
+TAIL_EMISSION_REWARD   = 0.05 OPCA
 ```
 
 The Monero block-size penalty is then applied as usual, and fees are added.
@@ -40,27 +40,27 @@ The Monero block-size penalty is then applied as usual, and fees are added.
 
 | After | Emitted (main curve) | Share of 10M |
 |---|---|---|
-| 1 year | 2,199,478 TCA | 22.0% |
-| 2 years | 3,929,789 TCA | 39.3% |
-| 3 years | 5,276,283 TCA | 52.8% |
-| 4 years | 6,324,097 TCA | 63.2% |
-| 5 years | 7,139,486 TCA | 71.4% |
-| 10 years | 9,183,710 TCA | 91.8% |
-| 15 years | 9,767,059 TCA | 97.7% |
+| 1 year | 2,199,478 OPCA | 22.0% |
+| 2 years | 3,929,789 OPCA | 39.3% |
+| 3 years | 5,276,283 OPCA | 52.8% |
+| 4 years | 6,324,097 OPCA | 63.2% |
+| 5 years | 7,139,486 OPCA | 71.4% |
+| 10 years | 9,183,710 OPCA | 91.8% |
+| 15 years | 9,767,059 OPCA | 97.7% |
 
-- Initial full reward: 2.384185791015 TCA per block (~6,866 TCA per day).
+- Initial full reward: 2.384185791015 OPCA per block (~6,866 OPCA per day).
 - Half-life of the remaining main supply: 2.76 years.
-- Tail emission starts at height ≈16,219,000 (~15.4 years): 0.05 TCA per block,
-  ~52,596 TCA a year, which is ~0.5% a year at that point and falling.
+- Tail emission starts at height ≈16,219,000 (~15.4 years): 0.05 OPCA per block,
+  ~52,596 OPCA a year, which is ~0.5% a year at that point and falling.
 - Slow start: during the first 20,160 blocks (7 days) rewards rise linearly from 0,
   so launch-day miners cannot capture a large share before others join. About 24,000
-  TCA is emitted in that week instead of ~48,000 (the rest stays in the curve).
-- Genesis output: 2.384185791015 TCA to a random key whose secret was discarded. It is
+  OPCA is emitted in that week instead of ~48,000 (the rest stays in the curve).
+- Genesis output: 2.384185791015 OPCA to a random key whose secret was discarded. It is
   a pre-RingCT output with a unique amount, so no valid 16-member ring can reference
   it: unspendable by construction.
 - **No premine, no developer fee, no ICO.**
 
-The table is produced by `contrib/sim/tacita_params.py` (bit-exact integer model).
+The table is produced by `contrib/sim/opacra_params.py` (bit-exact integer model).
 
 ## 3. Difficulty: LWMA-1
 
@@ -86,14 +86,14 @@ on a small chain. LWMA is the most widely deployed replacement in CryptoNote cha
 
 | | Mainnet | Testnet | Stagenet |
 |---|---|---|---|
-| Address prefix (standard / integrated / subaddress) | 27806 `Ta` / 22047 `Ti` / 19744 `Ts` | 8479 `Te` / 11935 `Tf` / 15263 `Tg` | 28440 `Sa` / 22809 `Si` / 20378 `Ss` |
+| Address prefix (standard / integrated / subaddress) | 30598 `Pa` / 24839 `Pi` / 22408 `Ps` | 8479 `Te` / 11935 `Tf` / 15263 `Tg` | 28440 `Sa` / 22809 `Si` / 20378 `Ss` |
 | Address length | 98 / 109 / 98 characters | 97 / 108 / 97 | 98 / 109 / 98 |
 | P2P / RPC / ZMQ ports | 29960 / 29961 / 29962 | 39960 / 39961 / 39962 | 49960 / 49961 / 49962 |
-| Network ID | `FCD0813C-0294-017F-8820-08C3B60914C6` | `F780A78B-DEFE-BC2C-0B69-F012EDE8F26D` | `6037C3AD-7B93-090A-133C-99C7E739171B` |
-| Genesis message | "Tacita mainnet genesis \| 2026-09-28 \| Private by default, auditable by choice." | "Tacita testnet genesis \| 2026-09-28" | "Tacita stagenet genesis \| 2026-09-28" |
+| Network ID | `BC2D893E-96B8-F691-199F-373CE5BC4718` | `8FB1396E-D492-E2E5-C968-2515170B5F91` | `0F57C4D1-D344-63D1-3D6F-FD9DD5F24042` |
+| Genesis message | "Opacra mainnet genesis \| 2026-10-02 \| Private by default, auditable by choice." | "Opacra testnet genesis \| 2026-10-02" | "Opacra stagenet genesis \| 2026-10-02" |
 
-Message-signing domain: `TacitaMessageSignature` (signatures cannot be replayed on Monero).
-Data directory `~/.tacita`, config file `tacita.conf`, log `tacita.log`.
+Message-signing domain: `OpacraMessageSignature` (signatures cannot be replayed on Monero).
+Data directory `~/.opacra`, config file `opacra.conf`, log `opacra.log`.
 
 These values are the **development identity**. Generate fresh network IDs and genesis
 transactions on launch day (`contrib/coin-identity/coinid.py`).
@@ -122,7 +122,7 @@ Consensus:
    `src/checkpoints/checkpoints.cpp`: Monero checkpoints removed.
 9. `src/cryptonote_core/cryptonote_tx_utils.cpp`, `src/cryptonote_basic/cryptonote_format_utils.cpp`:
    Monero's hard-coded proof-of-work and block-id exceptions for its block 202612 removed
-   (left in place they would let any block at Tacita height 202612 skip proof of work).
+   (left in place they would let any block at Opacra height 202612 skip proof of work).
 10. `src/cryptonote_core/blockchain.cpp` (`build_alt_chain`): side chains use only the newest
     11 timestamps for the median-time-past check, exactly like the main chain.
 11. Slow start also forbids blocks above the effective median (the reward is too small for
@@ -138,15 +138,15 @@ Network and wallet:
 14. `src/wallet/wallet2.cpp`: hard-fork checks look versions up by value (the table
     skips versions 2–15); height estimate without Monero's rollback offsets; "recent
     output" window computed from the block time.
-15. `src/simplewallet/simplewallet.cpp/.h`: `donate` uses `TACITA_DONATION_ADDR`
+15. `src/simplewallet/simplewallet.cpp/.h`: `donate` uses `OPACRA_DONATION_ADDR`
     (empty = disabled) instead of the Monero donation address.
 16. `src/cryptonote_core/cryptonote_core.cpp`: sync batch size no longer keyed to Monero's v4
     height; the block-rate monitor reads enough blocks for 30 s targets and computes its
     Poisson terms in log space (they overflowed to NaN above ~170 blocks).
 
 Branding (no behaviour change): string literals and binary names via
-`contrib/coin-identity/rebrand.py` (`tacitad`, `tacita-wallet-cli`, `tacita-wallet-rpc`,
-units tacita/millitac/microtac/nanotac/picotac, `tacita:` payment URIs, file magic
+`contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,
+units opacra/milliop/microop/nanoop/picoop, `opacra:` payment URIs, file magic
 strings for unsigned/signed transaction sets and exports). Environment variables keep
 their `MONERO_*` names (e.g. `MONERO_RANDOMX_FULL_MEM`).
 
@@ -167,5 +167,5 @@ knows Monero's network), the GUI (separate repository).
   later ones. Encourage use (and churn) early; consider FCMP++ when Monero ships it.
 - **FCMP++.** Monero's next upgrade replaces 16-member rings with full-chain membership
   proofs (code on Monero's `release-v0.19` branch; not activated on Monero mainnet as of
-  July 2026). Tacita can adopt it with a network upgrade (append `{17, height, 0, time}`)
+  July 2026). Opacra can adopt it with a network upgrade (append `{17, height, 0, time}`)
   once it is released and audited.

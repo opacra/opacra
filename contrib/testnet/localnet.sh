@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run a private multi-node Tacita network on one machine (development / testing).
+# Run a private multi-node Opacra network on one machine (development / testing).
 #
 #   contrib/testnet/localnet.sh start      # start NODES daemons that only peer with each other
 #   contrib/testnet/localnet.sh status
@@ -7,15 +7,15 @@
 #   contrib/testnet/localnet.sh wipe       # stop and delete all local chain data
 #
 # Environment:
-#   BIN       directory with tacitad (default: build/release/bin)
-#   DATA      data root (default: ~/tacita-localnet)
+#   BIN       directory with opacrad (default: build/release/bin)
+#   DATA      data root (default: ~/opacra-localnet)
 #   NODES     number of nodes (default 3)
 #   NET_FLAG  "" (mainnet rules, isolated), "--testnet" or "--stagenet"
 #   BASE_P2P  first P2P port (default 31000; node i uses BASE_P2P+10*i, RPC = P2P+1, ZMQ = P2P+2)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BIN=${BIN:-$HERE/../../build/release/bin}
-DATA=${DATA:-$HOME/tacita-localnet}
+DATA=${DATA:-$HOME/opacra-localnet}
 NODES=${NODES:-3}
 NET_FLAG=${NET_FLAG:-}
 BASE_P2P=${BASE_P2P:-31000}
@@ -31,17 +31,17 @@ start_node() {
     peers+=(--add-exclusive-node "127.0.0.1:$((BASE_P2P + j * 10))")
   done
   mkdir -p "$DATA/node$i"
-  "$BIN/tacitad" $NET_FLAG --data-dir "$DATA/node$i" \
+  "$BIN/opacrad" $NET_FLAG --data-dir "$DATA/node$i" \
     --p2p-bind-ip 127.0.0.1 --p2p-bind-port "$P2P" \
     --rpc-bind-ip 127.0.0.1 --rpc-bind-port "$RPC" --zmq-rpc-bind-port "$ZMQ" \
     --no-igd --allow-local-ip --disable-dns-checkpoints --check-updates disabled \
     --log-level 0 --non-interactive "${peers[@]}" "$@" \
-    --detach --pidfile "$DATA/node$i/tacitad.pid" >/dev/null
+    --detach --pidfile "$DATA/node$i/opacrad.pid" >/dev/null
   echo "node$i  p2p 127.0.0.1:$P2P  rpc 127.0.0.1:$RPC  data $DATA/node$i"
 }
 
 stop_node() {
-  local i=$1 pidf="$DATA/node$1/tacitad.pid"
+  local i=$1 pidf="$DATA/node$1/opacrad.pid"
   if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
     kill "$(cat "$pidf")"
     for _ in $(seq 1 60); do kill -0 "$(cat "$pidf")" 2>/dev/null || break; sleep 1; done

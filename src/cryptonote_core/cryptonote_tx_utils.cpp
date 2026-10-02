@@ -127,7 +127,7 @@ namespace cryptonote
     in.height = height;
 
     uint64_t block_reward;
-    // Tacita: includes the launch slow-start ramp (must match Blockchain::validate_miner_transaction)
+    // Opacra: includes the launch slow-start ramp (must match Blockchain::validate_miner_transaction)
     if(!get_block_reward_at_height(median_weight, current_block_weight, already_generated_coins, block_reward, hard_fork_version, height))
     {
       LOG_PRINT_L0("Block is too big");
@@ -725,8 +725,8 @@ namespace cryptonote
 
   bool get_block_longhash(const Blockchain *pbc, const blobdata& bd, crypto::hash& res, const uint64_t height, const int major_version, const crypto::hash *seed_hash, const int miners)
   {
-    // Tacita: Monero's hard-coded proof-of-work for its block 202612 is removed.
-    // Every Tacita block, at every height, is checked with its real hash.
+    // Opacra: Monero's hard-coded proof-of-work for its block 202612 is removed.
+    // Every Opacra block, at every height, is checked with its real hash.
     if (major_version >= RX_BLOCK_VERSION)
     {
       crypto::hash hash;

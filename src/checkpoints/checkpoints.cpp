@@ -183,7 +183,7 @@ namespace cryptonote
 
   bool checkpoints::init_default_checkpoints(network_type nettype)
   {
-    // Tacita: checkpoints are added here as the chain grows (one every few thousand
+    // Opacra: checkpoints are added here as the chain grows (one every few thousand
     // blocks, plus the genesis hash once it is final).  Format:
     //   ADD_CHECKPOINT2(height, "block hash", "cumulative difficulty as hex");
     // Get the values from a synced node:  print_block <height>  (daemon console)
@@ -239,7 +239,7 @@ namespace cryptonote
   {
     std::vector<std::string> records;
 
-    // Tacita: DNS checkpoint domains are configured in coin_network.h
+    // Opacra: DNS checkpoint domains are configured in coin_network.h
     const std::vector<std::string> dns_urls = coin_network::checkpoint_dns_domains(nettype);
     if (dns_urls.empty())
       return true;

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-End-to-end functional test of a Tacita network on one machine.
+End-to-end functional test of a Opacra network on one machine.
 
   1. starts 3 isolated nodes running mainnet consensus rules (contrib/testnet/localnet.sh)
-  2. creates 3 wallets (tacita-wallet-rpc) and mines to wallet 1
+  2. creates 3 wallets (opacra-wallet-rpc) and mines to wallet 1
   3. checks block times / LWMA difficulty, then sends private transactions
      (standard address + subaddress) and waits for them to unlock
   4. inspects the on-chain transactions (RingCT type, 16-member rings, view tags)
@@ -26,10 +26,10 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "sim"))
 from rpc import Daemon, Wallet, ATOMIC, RPCError  # noqa: E402
-import tacita_params as tp  # noqa: E402
+import opacra_params as tp  # noqa: E402
 
 BIN = pathlib.Path(os.environ.get("BIN", HERE.parent.parent / "build" / "release" / "bin"))
-DATA = pathlib.Path(os.environ.get("DATA", pathlib.Path.home() / "tacita-localnet"))
+DATA = pathlib.Path(os.environ.get("DATA", pathlib.Path.home() / "opacra-localnet"))
 BASE_P2P = int(os.environ.get("BASE_P2P", "31000"))
 MIN_HEIGHT_FOR_TX = int(os.environ.get("MIN_HEIGHT_FOR_TX", "110"))
 MINER_THREADS = int(os.environ.get("MINER_THREADS", "2"))
@@ -68,7 +68,7 @@ def start_wallet_rpc(i, daemon_idx):
     wdir = DATA / f"wallets{i}"
     wdir.mkdir(parents=True, exist_ok=True)
     log_file = open(DATA / f"wallet-rpc{i}.log", "w")
-    p = subprocess.Popen([str(BIN / "tacita-wallet-rpc"), "--wallet-dir", str(wdir), "--rpc-bind-port", str(port),
+    p = subprocess.Popen([str(BIN / "opacra-wallet-rpc"), "--wallet-dir", str(wdir), "--rpc-bind-port", str(port),
                           "--disable-rpc-login", "--daemon-address", f"127.0.0.1:{rpc_port(daemon_idx)}",
                           "--trusted-daemon", "--log-level", "0", "--non-interactive",
                           "--log-file", str(DATA / f"wallet-rpc{i}.core.log")],
@@ -171,14 +171,14 @@ def main():
         addrs.append(w.rpc("get_address")["address"])
         wallets.append(w)
     report["addresses"] = addrs
-    check("standard addresses start with 'Ta'", all(a.startswith("Ta") for a in addrs), addrs[0][:12] + "...")
+    check("standard addresses start with 'Pa'", all(a.startswith("Pa") for a in addrs), addrs[0][:12] + "...")
     if resume:
         sub = wallets[2].rpc("get_address", account_index=0, address_index=[1])["addresses"][0]["address"]
     else:
         sub = wallets[2].rpc("create_address", account_index=0, label="shop checkout")["address"]
-    check("subaddresses start with 'Ts'", sub.startswith("Ts"), sub[:12] + "...")
+    check("subaddresses start with 'Ps'", sub.startswith("Ps"), sub[:12] + "...")
     integ = wallets[1].rpc("make_integrated_address")["integrated_address"]
-    check("integrated addresses start with 'Ti'", integ.startswith("Ti"), integ[:12] + "...")
+    check("integrated addresses start with 'Pi'", integ.startswith("Pi"), integ[:12] + "...")
 
     # --- mine
     miner = nodes[0]
@@ -201,14 +201,14 @@ def main():
     w1.rpc("refresh")
     bal = w1.rpc("get_balance")
     report["miner_balance_before"] = bal
-    log(f"wallet1 balance {bal['balance']/ATOMIC:.6f} TCA, unlocked {bal['unlocked_balance']/ATOMIC:.6f} TCA")
+    log(f"wallet1 balance {bal['balance']/ATOMIC:.6f} OPCA, unlocked {bal['unlocked_balance']/ATOMIC:.6f} OPCA")
     check("mined coins unlocked (60-block coinbase lock)", bal["unlocked_balance"] > 0)
-    amt2, amt3 = 50_000_000_000, 20_000_000_000  # 0.05 and 0.02 TCA
+    amt2, amt3 = 50_000_000_000, 20_000_000_000  # 0.05 and 0.02 OPCA
     tx = w1.rpc("transfer", destinations=[{"address": addrs[1], "amount": amt2}, {"address": sub, "amount": amt3}],
                 priority=0, get_tx_key=True)
     txid, txkey, fee = tx["tx_hash"], tx["tx_key"], tx["fee"]
     report["tx"] = {"hash": txid, "fee": fee}
-    log(f"sent tx {txid} fee {fee/ATOMIC:.8f} TCA")
+    log(f"sent tx {txid} fee {fee/ATOMIC:.8f} OPCA")
     h_sent = miner.height()
 
     # --- on-chain inspection
@@ -234,13 +234,13 @@ def main():
     for w in (w2, w3):
         w.rpc("refresh")
     b2, b3 = w2.rpc("get_balance"), w3.rpc("get_balance")
-    check("recipient 2 received exact amount", b2["balance"] == amt2, f"{b2['balance']/ATOMIC} TCA")
-    check("recipient 3 (subaddress) received exact amount", b3["balance"] == amt3, f"{b3['balance']/ATOMIC} TCA")
+    check("recipient 2 received exact amount", b2["balance"] == amt2, f"{b2['balance']/ATOMIC} OPCA")
+    check("recipient 3 (subaddress) received exact amount", b3["balance"] == amt3, f"{b3['balance']/ATOMIC} OPCA")
     check("received funds spendable after 10 blocks", b2["unlocked_balance"] == amt2 and b3["unlocked_balance"] == amt3)
 
     # --- selective disclosure ("auditable by choice")
     ck = w2.rpc("check_tx_key", txid=txid, tx_key=txkey, address=addrs[1])
-    check("tx key proves payment to recipient (check_tx_key)", ck["received"] == amt2, f"{ck['received']/ATOMIC} TCA, {ck['confirmations']} conf")
+    check("tx key proves payment to recipient (check_tx_key)", ck["received"] == amt2, f"{ck['received']/ATOMIC} OPCA, {ck['confirmations']} conf")
     proof = w1.rpc("get_tx_proof", txid=txid, address=addrs[1], message="invoice #1001")["signature"]
     cp = w3.rpc("check_tx_proof", txid=txid, address=addrs[1], message="invoice #1001", signature=proof)
     check("payment proof verifies for a third party (get/check_tx_proof)", cp["good"] and cp["received"] == amt2)
@@ -248,13 +248,13 @@ def main():
     check("payment proof bound to its message", not bad["good"])
     rp = w2.rpc("get_reserve_proof", all=True, message="audit 2026-Q4")["signature"]
     cr = w3.rpc("check_reserve_proof", address=addrs[1], message="audit 2026-Q4", signature=rp)
-    check("reserve proof shows balance without revealing history", cr["good"] and cr["total"] == amt2, f"total {cr['total']/ATOMIC} TCA")
+    check("reserve proof shows balance without revealing history", cr["good"] and cr["total"] == amt2, f"total {cr['total']/ATOMIC} OPCA")
     vk = w2.rpc("query_key", key_type="view_key")["key"]
     w3.rpc("generate_from_keys", filename="w1-auditor-view", address=addrs[1], viewkey=vk, password="", restore_height=0)
     w3.rpc("refresh")
     aud = w3.rpc("get_transfers", **{"in": True})
     seen = sum(t["amount"] for t in aud.get("in", []) if t["txid"] == txid)
-    check("view-only (auditor) wallet sees incoming payments", seen == amt2, f"{seen/ATOMIC} TCA")
+    check("view-only (auditor) wallet sees incoming payments", seen == amt2, f"{seen/ATOMIC} OPCA")
     w3.rpc("close_wallet")
     w3.rpc("open_wallet", filename="w2", password="")
 

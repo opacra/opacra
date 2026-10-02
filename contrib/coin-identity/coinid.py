@@ -3,14 +3,14 @@
 coinid.py - chain-identity tooling for a CryptoNote/Monero-derived coin.
 
 Generates the values that make a fork a *separate* network:
-  * address prefixes (so addresses start with a chosen string, e.g. "Ta")
+  * address prefixes (so addresses start with a chosen string, e.g. "Pa")
   * P2P network IDs (random 16-byte UUIDs)
   * genesis coinbase transactions (valid ed25519 points + optional message)
 
 Pure Python; needs `pycryptodome` for original Keccak-256 (cn_fast_hash).
 
 Examples
-  python3 coinid.py prefix Ta            # find a base58 prefix whose addresses start with "Ta"
+  python3 coinid.py prefix Pa            # find a base58 prefix whose addresses start with "Pa"
   python3 coinid.py network-id           # print a fresh network ID as a C initializer
   python3 coinid.py genesis --reward 2384185791015 --message "headline of the day"
   python3 coinid.py address --prefix 12345   # show an example address for a prefix

@@ -45,7 +45,7 @@ namespace tools
 
     MDEBUG("Checking updates for " << buildtag << " " << software);
 
-    // Tacita: release announcement domains are configured in coin_network.h
+    // Opacra: release announcement domains are configured in coin_network.h
     const std::vector<std::string> dns_urls = coin_network::update_dns_domains();
     if (dns_urls.empty())
       return false;
@@ -102,7 +102,7 @@ namespace tools
 #ifdef _WIN32
     static const char *extension = strncmp(buildtag.c_str(), "source", 6) ? (strncmp(buildtag.c_str(), "install-", 8) ? ".zip" : ".exe") : ".tar.bz2";
 #elif defined(__APPLE__)
-    static const char *extension = strncmp(software.c_str(), "tacita-gui", 10) ? ".tar.bz2" : ".dmg";
+    static const char *extension = strncmp(software.c_str(), "opacra-gui", 10) ? ".tar.bz2" : ".dmg";
 #else
     static const char extension[] = ".tar.bz2";
 #endif

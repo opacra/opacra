@@ -13,7 +13,7 @@ Run 2026-09-28 14:28:03 to 2026-09-28 15:33:43 with `contrib/testnet/functional_
 | Blocks mined | 128 (heights 0 to 127) |
 | Mean block time after the 30-block startup | 31.36 s (target 30 s) |
 | Median block time after startup | 20.0 s |
-| Test transaction | 25 inputs, 3 outputs, 17550 bytes, fee 0.00144080 TCA |
+| Test transaction | 25 inputs, 3 outputs, 17550 bytes, fee 0.00144080 OPCA |
 | Ring size of every input | [16] |
 | Send to spendable (10 confirmations) | 366 s |
 | Chain split | node 2 isolated at height 120; all nodes re-converged at heights [128, 128, 128] |
@@ -36,14 +36,14 @@ Run 2026-09-28 14:28:03 to 2026-09-28 15:33:43 with `contrib/testnet/functional_
 | outputs carry view tags | pass |  |
 | amounts hidden on chain (all vout amounts 0) | pass |  |
 | no plaintext addresses in tx | pass |  |
-| recipient 2 received exact amount | pass | 0.05 TCA |
-| recipient 3 (subaddress) received exact amount | pass | 0.02 TCA |
+| recipient 2 received exact amount | pass | 0.05 OPCA |
+| recipient 3 (subaddress) received exact amount | pass | 0.02 OPCA |
 | received funds spendable after 10 blocks | pass |  |
-| tx key proves payment to recipient (check_tx_key) | pass | 0.05 TCA, 10 conf |
+| tx key proves payment to recipient (check_tx_key) | pass | 0.05 OPCA, 10 conf |
 | payment proof verifies for a third party (get/check_tx_proof) | pass |  |
 | payment proof bound to its message | pass |  |
-| reserve proof shows balance without revealing history | pass | total 0.05 TCA |
-| view-only (auditor) wallet sees incoming payments | pass | 0.05 TCA |
+| reserve proof shows balance without revealing history | pass | total 0.05 OPCA |
+| view-only (auditor) wallet sees incoming payments | pass | 0.05 OPCA |
 | recipient can re-spend received coins | pass | 854b57ed578d9874c9476661854fc9e18cd2a34b2ea17ef3f7c2f9b7ab96c274 |
 | two competing chains exist | pass | dc76d849516e vs a7661f2e3e2e |
 | network re-converged on one chain after the split (reorg) | pass | heights [128, 128, 128] |
@@ -67,12 +67,12 @@ in daemon (solo) mode with no built-in miner running:
 ```
 
 Over two runs XMRig added 18 blocks (heights 128 to 145); all three nodes accepted them and share the same tip.
-`--coin monero` only selects the block format and algorithm; Tacita uses both unchanged.
+`--coin monero` only selects the block format and algorithm; Opacra uses both unchanged.
 
 ## What this does not cover
 
 - Behaviour under real-world latency, many peers, or adversarial miners (use the public testnet).
-- Blocks above the median weight (the slow-start size cap is covered by `tests/tacita`).
+- Blocks above the median weight (the slow-start size cap is covered by `tests/opacra`).
 - Hardware wallets and the GUI (not part of this fork).
 
 Genesis hash: `b84ffdd40b388fda7e5d9eddb84355c1791f65e1b315d9e5c9d07f9880aee2f3`

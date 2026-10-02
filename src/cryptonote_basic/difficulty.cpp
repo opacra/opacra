@@ -122,7 +122,7 @@ namespace cryptonote {
   }
 
   uint64_t next_difficulty_64(std::vector<std::uint64_t> timestamps, std::vector<uint64_t> cumulative_difficulties, size_t target_seconds) {
-    // Tacita: kept for API compatibility (tests/tools); uses the same LWMA-1 rule
+    // Opacra: kept for API compatibility (tests/tools); uses the same LWMA-1 rule
     std::vector<difficulty_type> wide(cumulative_difficulties.begin(), cumulative_difficulties.end());
     const difficulty_type d = next_difficulty(std::move(timestamps), std::move(wide), target_seconds);
     if (d > std::numeric_limits<uint64_t>::max())
@@ -168,7 +168,7 @@ namespace cryptonote {
       return check_hash_128(hash, difficulty);
   }
 
-  // Tacita: LWMA-1 difficulty algorithm
+  // Opacra: LWMA-1 difficulty algorithm
   // Copyright (c) 2017-2019 Zawy (zawy12), MIT License
   // https://github.com/zawy12/difficulty-algorithms/issues/3
   //

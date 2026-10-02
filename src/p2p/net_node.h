@@ -296,7 +296,7 @@ namespace nodetool
     virtual void clear_used_stripe_peers();
 
   private:
-    // Tacita: DNS seed domains are configured in coin_network.h
+    // Opacra: DNS seed domains are configured in coin_network.h
     const std::vector<std::string> m_seed_nodes_list = coin_network::dns_seed_domains();
 
     bool islimitup=false;

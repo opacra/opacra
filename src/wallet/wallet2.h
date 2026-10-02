@@ -1371,7 +1371,7 @@ private:
     }
 
     BEGIN_SERIALIZE_OBJECT()
-      MAGIC_FIELD("tacita wallet cache")
+      MAGIC_FIELD("opacra wallet cache")
       VERSION_FIELD(2)
       FIELD(m_blockchain)
       FIELD(m_transfers)

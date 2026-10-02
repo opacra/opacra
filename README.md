@@ -1,23 +1,23 @@
-# Tacita (TCA)
+# Opacra (OPCA)
 
 **Private by default. Auditable by choice. Spendable in five minutes.**
 
-Tacita is a proof-of-work privacy cryptocurrency with its own blockchain. It is a
+Opacra is a proof-of-work privacy cryptocurrency with its own blockchain. It is a
 fork of [Monero](https://github.com/monero-project/monero) v0.18.5.1. It is a
 native coin with its own network, genesis block and consensus rules, not a token
 on another chain (no ERC-20, no smart-contract host).
 
-> *Tacita* is the Roman goddess of silence. "Tacita" is a working name: rename it
-> in one command before launch (see [Renaming the coin](#renaming-the-coin)).
+> The name comes from *opaque*: transactions cannot be seen through. Website:
+> [opacra.org](https://opacra.org). Ticker: OPCA.
 
-Copyright (c) 2026 The Tacita Project. Portions Copyright (c) 2014-2022 The Monero Project
+Copyright (c) 2026 The Opacra Project. Portions Copyright (c) 2014-2022 The Monero Project
 and (c) 2012-2013 The Cryptonote developers. BSD-3-Clause, see [LICENSE](LICENSE).
 
 ---
 
 ## At a glance
 
-| | Tacita | Monero (reference) |
+| | Opacra | Monero (reference) |
 |---|---|---|
 | Chain | Own blockchain, own genesis, own P2P network | – |
 | Privacy | Stealth addresses, RingCT, CLSAG ring signatures (16 members), Bulletproofs+, view tags, Dandelion++ | same |
@@ -26,14 +26,14 @@ and (c) 2012-2013 The Cryptonote developers. BSD-3-Clause, see [LICENSE](LICENSE
 | **Spendable after** | **10 blocks, about 5 minutes** | 10 blocks, about 20 minutes |
 | Coinbase maturity | 60 blocks, about 30 minutes | 60 blocks, about 2 hours |
 | Difficulty algorithm | LWMA-1 (N = 60, reacts within ~60 blocks) | 720-block sorted window |
-| Main emission | **10,000,000 TCA**, smooth curve (half emitted in ~2.8 years) | ~18.1M XMR |
-| Tail emission | 0.05 TCA per block forever (~52,600 TCA a year, ~0.5% and falling) | 0.6 XMR per block |
+| Main emission | **10,000,000 OPCA**, smooth curve (half emitted in ~2.8 years) | ~18.1M XMR |
+| Tail emission | 0.05 OPCA per block forever (~52,600 OPCA a year, ~0.5% and falling) | 0.6 XMR per block |
 | Launch | **Fair launch**: no premine, no ICO, 7-day reward ramp ("slow start") | fair launch |
-| Initial block reward | 2.384186 TCA (full reward from block 20,160) | – |
-| Decimals | 12 (1 TCA = 10¹² picotac) | 12 |
-| Addresses | `Ta…` standard, `Ts…` subaddress, `Ti…` integrated | `4…`, `8…`, `4…` |
+| Initial block reward | 2.384186 OPCA (full reward from block 20,160) | – |
+| Decimals | 12 (1 OPCA = 10¹² picoop) | 12 |
+| Addresses | `Pa…` standard, `Ps…` subaddress, `Pi…` integrated | `4…`, `8…`, `4…` |
 | Ports (mainnet) | P2P 29960, RPC 29961, ZMQ 29962 | 18080, 18081, 18082 |
-| Data directory | `~/.tacita` | `~/.bitmonero` |
+| Data directory | `~/.opacra` | `~/.bitmonero` |
 
 Selective disclosure is built in and tested: **view keys** (read-only audit
 wallets), **payment proofs** (`get_tx_proof`, bound to a message such as an invoice
@@ -41,7 +41,7 @@ number), **tx keys** and **reserve proofs** (prove a balance without showing
 history). These features are the basis of the "auditable by choice" positioning in
 the concept document.
 
-Full parameter list and every change from Monero: [docs/TACITA_SPEC.md](docs/TACITA_SPEC.md).
+Full parameter list and every change from Monero: [docs/OPACRA_SPEC.md](docs/OPACRA_SPEC.md).
 
 ## Status
 
@@ -68,13 +68,17 @@ git submodule update --init --recursive
 mkdir -p build/release && cd build/release
 cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DUSE_DEVICE_TREZOR=OFF ../..
 make -j"$(nproc)" daemon simplewallet wallet_rpc_server
-ls bin/   # tacitad  tacita-wallet-cli  tacita-wallet-rpc
+ls bin/   # opacrad  opacra-wallet-cli  opacra-wallet-rpc
 
-# consensus regression tests for the rules Tacita changed (emission, slow start, LWMA, forks)
-make tacita_consensus_tests && ./bin/tacita_consensus_tests
+# The default build is tuned for *this* CPU (-march=native) and may crash with
+# "Illegal instruction" on other machines. For binaries you will copy elsewhere
+# (servers, releases), add -DARCH=x86-64 to the cmake line.
+
+# consensus regression tests for the rules Opacra changed (emission, slow start, LWMA, forks)
+make opacra_consensus_tests && ./bin/opacra_consensus_tests
 ```
 
-Or with Docker: `docker build -t tacita -f contrib/launch/Dockerfile .`
+Or with Docker: `docker build -t opacra -f contrib/launch/Dockerfile .`
 
 Portable release binaries (Windows, macOS, static Linux) are built with Monero's
 reproducible `contrib/depends` / `contrib/guix` system. See
@@ -84,13 +88,13 @@ reproducible `contrib/depends` / `contrib/guix` system. See
 
 ```bash
 # 1. run a node (mainnet)
-./tacitad --detach
+./opacrad --detach
 
 # 2. create a wallet
-./tacita-wallet-cli --generate-new-wallet mywallet
+./opacra-wallet-cli --generate-new-wallet mywallet
 
-# 3. mine to your wallet (daemon console, or: ./tacitad --start-mining <address> --mining-threads 4)
-./tacitad start_mining Ta... 4
+# 3. mine to your wallet (daemon console, or: ./opacrad --start-mining <address> --mining-threads 4)
+./opacrad start_mining Ta... 4
 ```
 
 A complete private network on one machine (3 nodes, mainnet rules), plus an end-to-end
@@ -106,7 +110,7 @@ contrib/testnet/functional_test.py        # ~1-2 hours on 2 CPU cores
 
 | Document | What it covers |
 |---|---|
-| [docs/TACITA_SPEC.md](docs/TACITA_SPEC.md) | Parameters, emission schedule, difficulty algorithm, every change from Monero |
+| [docs/OPACRA_SPEC.md](docs/OPACRA_SPEC.md) | Parameters, emission schedule, difficulty algorithm, every change from Monero |
 | [docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md) | Step-by-step mainnet launch: identity, seed nodes, releases, explorer, pool |
 | [docs/MINING.md](docs/MINING.md) | Solo mining, XMRig, running a pool |
 | [docs/RUNNING_A_NODE.md](docs/RUNNING_A_NODE.md) | VPS seed node setup, systemd, firewall, config file |
@@ -119,7 +123,7 @@ All user-visible naming comes from string literals, binary names and a handful o
 config values, so renaming is mechanical:
 
 ```bash
-python3 contrib/coin-identity/rebrand.py --from Tacita --to NewName --ticker-from TCA --ticker-to NEW
+python3 contrib/coin-identity/rebrand.py --from Opacra --to NewName --ticker-from OPCA --ticker-to NEW
 python3 contrib/coin-identity/coinid.py prefix Nw     # pick new address prefixes
 python3 contrib/coin-identity/coinid.py network-id    # new network IDs
 python3 contrib/coin-identity/coinid.py genesis --reward 2384185791015 --message "..."
@@ -130,6 +134,6 @@ genesis transactions in `src/cryptonote_config.h`.
 
 ## Credits
 
-Tacita builds entirely on the work of the Monero Project and the Monero Research Lab,
+Opacra builds entirely on the work of the Monero Project and the Monero Research Lab,
 and on the CryptoNote reference implementation. The LWMA difficulty algorithm is by
 Zawy12 (MIT License). Keep the upstream copyright notices when redistributing.

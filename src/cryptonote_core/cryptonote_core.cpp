@@ -172,7 +172,7 @@ namespace cryptonote
   };
   static const command_line::arg_descriptor<std::string> arg_check_updates = {
     "check-updates"
-  , "Check for new versions of tacita: [disabled|notify|download|update]"
+  , "Check for new versions of opacra: [disabled|notify|download|update]"
   , "notify"
   };
   static const command_line::arg_descriptor<bool> arg_fluffy_blocks  = {
@@ -206,7 +206,7 @@ namespace cryptonote
   static const command_line::arg_descriptor<std::string> arg_block_rate_notify = {
     "block-rate-notify"
   , "Run a program when the block rate undergoes large fluctuations. This might "
-    "be a sign of large amounts of hash rate going on and off the Tacita network, "
+    "be a sign of large amounts of hash rate going on and off the Opacra network, "
     "and thus be of potential interest in predicting attacks. %t will be replaced "
     "by the number of minutes for the observation window, %b by the number of "
     "blocks observed within that window, and %e by the number of blocks that was "
@@ -502,8 +502,8 @@ namespace cryptonote
       if (boost::filesystem::exists(old_files / "blockchain.bin"))
       {
         MWARNING("Found old-style blockchain.bin in " << old_files.string());
-        MWARNING("Tacita now uses a new format. You can either remove blockchain.bin to start syncing");
-        MWARNING("the blockchain anew, or use tacita-blockchain-export and tacita-blockchain-import to");
+        MWARNING("Opacra now uses a new format. You can either remove blockchain.bin to start syncing");
+        MWARNING("the blockchain anew, or use opacra-blockchain-export and opacra-blockchain-import to");
         MWARNING("convert your existing blockchain.bin to the new format. See README.md for instructions.");
         return false;
       }
@@ -948,7 +948,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   size_t core::get_block_sync_size(uint64_t height) const
   {
-    // Tacita: every block from height 1 is a modern (v16) block
+    // Opacra: every block from height 1 is a modern (v16) block
     static const uint64_t quick_height = 0;
     size_t res = 0;
     if (block_sync_size > 0)
@@ -1592,7 +1592,7 @@ namespace cryptonote
     {
       std::string main_message;
       if (m_offline)
-        main_message = "The daemon is running offline and will not attempt to sync to the Tacita network.";
+        main_message = "The daemon is running offline and will not attempt to sync to the Opacra network.";
       else
         main_message = "The daemon will start synchronizing with the network. This may take a long time to complete.";
       MGINFO_YELLOW(ENDL << "**********************************************************************" << ENDL
@@ -1640,7 +1640,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::check_updates()
   {
-    static const char software[] = "tacita";
+    static const char software[] = "opacra";
 #ifdef BUILD_TAG
     static const char buildtag[] = BOOST_PP_STRINGIZE(BUILD_TAG);
     static const char subdir[] = "cli"; // because it can never be simple
@@ -1792,7 +1792,7 @@ namespace cryptonote
   static double probability1(unsigned int blocks, unsigned int expected)
   {
     // https://www.umass.edu/wsp/resources/poisson/#computing
-    // Tacita: computed in log space; with 30 s blocks the counts exceed 170, where
+    // Opacra: computed in log space; with 30 s blocks the counts exceed 170, where
     // factorial() and pow() overflow to inf and the ratio becomes NaN.
     return exp(blocks * log((double)expected) - lgamma(blocks + 1.0) - expected);
   }
@@ -1822,7 +1822,7 @@ namespace cryptonote
     }
 
     static constexpr double threshold = 1. / (864000 / DIFFICULTY_TARGET_V2); // one false positive every 10 days
-    static constexpr unsigned int max_blocks_checked = 3 * 5400 / DIFFICULTY_TARGET_V2; // Tacita: 3x the longest window's expected count
+    static constexpr unsigned int max_blocks_checked = 3 * 5400 / DIFFICULTY_TARGET_V2; // Opacra: 3x the longest window's expected count
 
     const time_t now = time(NULL);
     const std::vector<time_t> timestamps = m_blockchain_storage.get_last_block_timestamps(max_blocks_checked);
@@ -1837,7 +1837,7 @@ namespace cryptonote
       MDEBUG("blocks in the last " << seconds[n] / 60 << " minutes: " << b << " (probability " << p << ")");
       if (p < threshold)
       {
-        MWARNING("There were " << b << (b == max_blocks_checked ? " or more" : "") << " blocks in the last " << seconds[n] / 60 << " minutes, there might be large hash rate changes, or we might be partitioned, cut off from the Tacita network or under attack, or your computer's time is off. Or it could be just sheer bad luck.");
+        MWARNING("There were " << b << (b == max_blocks_checked ? " or more" : "") << " blocks in the last " << seconds[n] / 60 << " minutes, there might be large hash rate changes, or we might be partitioned, cut off from the Opacra network or under attack, or your computer's time is off. Or it could be just sheer bad luck.");
 
         std::shared_ptr<tools::Notify> block_rate_notify = m_block_rate_notify;
         if (block_rate_notify)

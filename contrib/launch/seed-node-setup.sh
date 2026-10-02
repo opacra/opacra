@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Provision an Ubuntu 24.04 VPS as a Tacita seed node.
-#   scp tacita-linux-x64.tar.gz seed-node-setup.sh tacitad.service tacita.conf root@VPS:
-#   ssh root@VPS 'bash seed-node-setup.sh tacita-linux-x64.tar.gz'
+# Provision an Ubuntu 24.04 VPS as a Opacra seed node.
+#   scp opacra-linux-x64.tar.gz seed-node-setup.sh opacrad.service opacra.conf root@VPS:
+#   ssh root@VPS 'bash seed-node-setup.sh opacra-linux-x64.tar.gz'
 # Needs: 2+ vCPU, 4 GB RAM, 50+ GB SSD. Opens TCP 29960 (P2P) and SSH.
 set -euo pipefail
-TARBALL=${1:?usage: seed-node-setup.sh <tacita release tarball>}
+TARBALL=${1:?usage: seed-node-setup.sh <opacra release tarball>}
 
 . /etc/os-release
 if [ "${VERSION_ID:-}" != "24.04" ]; then
@@ -17,19 +17,19 @@ apt-get install -y -qq chrony ufw libboost-chrono1.83.0t64 libboost-filesystem1.
 # accurate clock matters: blocks more than 3 minutes in the future are rejected
 systemctl enable --now chrony
 
-id tacita >/dev/null 2>&1 || useradd --system --home /var/lib/tacita --shell /usr/sbin/nologin tacita
-mkdir -p /opt/tacita /etc/tacita /var/lib/tacita
-tar -xzf "$TARBALL" -C /opt/tacita --strip-components=1
-cp -n tacita.conf /etc/tacita/tacita.conf
-chown -R tacita:tacita /var/lib/tacita
-cp tacitad.service /etc/systemd/system/tacitad.service
+id opacra >/dev/null 2>&1 || useradd --system --home /var/lib/opacra --shell /usr/sbin/nologin opacra
+mkdir -p /opt/opacra /etc/opacra /var/lib/opacra
+tar -xzf "$TARBALL" -C /opt/opacra --strip-components=1
+cp -n opacra.conf /etc/opacra/opacra.conf
+chown -R opacra:opacra /var/lib/opacra
+cp opacrad.service /etc/systemd/system/opacrad.service
 systemctl daemon-reload
-systemctl enable --now tacitad
+systemctl enable --now opacrad
 
 ufw allow OpenSSH
-ufw allow 29960/tcp comment 'Tacita P2P'
+ufw allow 29960/tcp comment 'Opacra P2P'
 ufw --force enable
 
 sleep 5
-/opt/tacita/tacitad --rpc-bind-port 29961 status || true
-echo "Seed node running. Logs: journalctl -u tacitad -f  |  /var/lib/tacita/tacita.log"
+/opt/opacra/opacrad --rpc-bind-port 29961 status || true
+echo "Seed node running. Logs: journalctl -u opacrad -f  |  /var/lib/opacra/opacra.log"

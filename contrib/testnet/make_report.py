@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn a functional_test.py report.json into docs/TEST_REPORT.md and a chart.
 
-  python3 contrib/testnet/make_report.py ~/tacita-localnet/report.json
+  python3 contrib/testnet/make_report.py ~/opacra-localnet/report.json
 """
 import json
 import pathlib
@@ -87,7 +87,7 @@ lines = [
     f"| Blocks mined | {report['replay']['blocks']} (heights 0 to {report['replay']['blocks'] - 1}) |",
     f"| Mean block time after the 30-block startup | {fs.get('mean_solvetime')} s (target 30 s) |",
     f"| Median block time after startup | {fs.get('median_solvetime')} s |",
-    f"| Test transaction | {tx.get('inputs')} inputs, {tx.get('outputs')} outputs, {tx.get('weight_bytes')} bytes, fee {tx.get('fee', 0) / 1e12:.8f} TCA |",
+    f"| Test transaction | {tx.get('inputs')} inputs, {tx.get('outputs')} outputs, {tx.get('weight_bytes')} bytes, fee {tx.get('fee', 0) / 1e12:.8f} OPCA |",
     f"| Ring size of every input | {sorted(set(tx.get('ring_sizes', [])))} |",
     f"| Send to spendable (10 confirmations) | {report.get('seconds_to_spendable')} s |",
     f"| Chain split | node 2 isolated at height {report['reorg']['split_height']}; all nodes re-converged at heights {report['reorg']['converged_heights']} |",
@@ -105,7 +105,7 @@ lines += [
     "## What this does not cover",
     "",
     "- Behaviour under real-world latency, many peers, or adversarial miners (use the public testnet).",
-    "- Blocks above the median weight (the slow-start size cap is covered by `tests/tacita`).",
+    "- Blocks above the median weight (the slow-start size cap is covered by `tests/opacra`).",
     "- Hardware wallets and the GUI (not part of this fork).",
     "",
     f"Genesis hash: `{report['genesis_hash']}`",

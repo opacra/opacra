@@ -45,5 +45,5 @@ add_dependencies(gen_ssl_cert
   version)
 set_property(TARGET gen_ssl_cert
   PROPERTY
-    OUTPUT_NAME "tacita-gen-ssl-cert")
+    OUTPUT_NAME "opacra-gen-ssl-cert")
 install(TARGETS gen_ssl_cert DESTINATION bin)

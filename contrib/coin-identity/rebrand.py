@@ -7,10 +7,10 @@ touched: identifiers, comments, macro names and consensus code are never
 modified, so re-running the script cannot change consensus behaviour.
 
 Usage
-  python3 rebrand.py --from Monero --to Tacita --ticker-from XMR --ticker-to TCA [--root .] [--dry-run]
+  python3 rebrand.py --from Monero --to Opacra --ticker-from XMR --ticker-to OPCA [--root .] [--dry-run]
 
-The first run was  Monero -> Tacita.  To rename Tacita later, run e.g.
-  python3 rebrand.py --from Tacita --to Umbra --ticker-from TCA --ticker-to UMB
+The first run was  Monero -> Opacra.  To rename Opacra later, run e.g.
+  python3 rebrand.py --from Opacra --to Umbra --ticker-from OPCA --ticker-to UMB
 and then regenerate the chain identity (coinid.py) before launch.
 """
 import argparse

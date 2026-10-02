@@ -1,7 +1,7 @@
-# Tacita consensus regression tests (no external test framework).
-#   make tacita_consensus_tests && ./bin/tacita_consensus_tests
-add_executable(tacita_consensus_tests tacita_consensus_tests.cpp)
-target_link_libraries(tacita_consensus_tests
+# Opacra consensus regression tests (no external test framework).
+#   make opacra_consensus_tests && ./bin/opacra_consensus_tests
+add_executable(opacra_consensus_tests opacra_consensus_tests.cpp)
+target_link_libraries(opacra_consensus_tests
   PRIVATE
     cryptonote_core
     cryptonote_basic
@@ -18,4 +18,4 @@ target_link_libraries(tacita_consensus_tests
     ${Boost_THREAD_LIBRARY}
     ${CMAKE_THREAD_LIBS_INIT}
     ${EXTRA_LIBRARIES})
-set_property(TARGET tacita_consensus_tests PROPERTY RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set_property(TARGET opacra_consensus_tests PROPERTY RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

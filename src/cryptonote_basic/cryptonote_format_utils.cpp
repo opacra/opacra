@@ -1155,15 +1155,15 @@ namespace cryptonote
     switch (decimal_point)
     {
       case 12:
-        return "tacita";
+        return "opacra";
       case 9:
-        return "millitac";
+        return "milliop";
       case 6:
-        return "microtac";
+        return "microop";
       case 3:
-        return "nanotac";
+        return "nanoop";
       case 0:
-        return "picotac";
+        return "picoop";
       default:
         ASSERT_MES_AND_THROW("Invalid decimal point specification: " << decimal_point);
     }
@@ -1478,7 +1478,7 @@ namespace cryptonote
     if (!hash_result)
       return false;
 
-    // Tacita: Monero's block-id exception for its block 202612 is removed.
+    // Opacra: Monero's block-id exception for its block 202612 is removed.
     return hash_result;
   }
   //---------------------------------------------------------------

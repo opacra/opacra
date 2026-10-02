@@ -17,7 +17,7 @@ or rules, and must be final before the first public binaries are published.
 ## 1. Rename (if the name changes)
 
 ```bash
-python3 contrib/coin-identity/rebrand.py --from Tacita --to NewName --ticker-from TCA --ticker-to NEW
+python3 contrib/coin-identity/rebrand.py --from Opacra --to NewName --ticker-from OPCA --ticker-to NEW
 ```
 
 Then edit `COIN_NAME`, `COIN_TICKER` and `CRYPTONOTE_NAME` in `src/cryptonote_config.h`,
@@ -56,7 +56,7 @@ python3 coinid.py genesis --reward 2384185791015 \
       `docs/ANONYMITY_NETWORKS.md`.
 - [ ] Leave `checkpoint_dns_domains`, `update_dns_domains` and `blocklist_dns_domains`
       empty until you control DNSSEC-signed domains for them.
-- [ ] Optional community fund: a mainnet address in `TACITA_DONATION_ADDR`
+- [ ] Optional community fund: a mainnet address in `OPACRA_DONATION_ADDR`
       (`src/simplewallet/simplewallet.h`). Publish its view key so anyone can audit it.
 
 ## 4. Public testnet (2–4 weeks)
@@ -64,7 +64,7 @@ python3 coinid.py genesis --reward 2384185791015 \
 - [ ] Build the release candidate, run 2–3 testnet seed nodes (`--testnet`, port 39960).
 - [ ] Invite miners and developers; run the block explorer and pool against testnet.
 - [ ] Run `contrib/testnet/functional_test.py` on the release candidate.
-- [ ] Get the consensus diff reviewed by someone independent (see `docs/TACITA_SPEC.md` §5).
+- [ ] Get the consensus diff reviewed by someone independent (see `docs/OPACRA_SPEC.md` §5).
       A paid audit of the changed files is small (the diff is a few hundred lines).
 - [ ] Fix, rebuild and restart testnet if anything changes.
 
@@ -73,12 +73,12 @@ python3 coinid.py genesis --reward 2384185791015 \
 On each Ubuntu 24.04 VPS:
 
 ```bash
-scp tacita-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,tacitad.service,tacita.conf} root@SEED:
-ssh root@SEED 'bash seed-node-setup.sh tacita-linux-x64.tar.gz'
+scp opacra-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,opacrad.service,opacra.conf} root@SEED:
+ssh root@SEED 'bash seed-node-setup.sh opacra-linux-x64.tar.gz'
 ```
 
-Edit `/etc/tacita/tacita.conf` on each seed and add the other seeds as
-`add-priority-node=IP:29960`. Check with `journalctl -u tacitad -f`.
+Edit `/etc/opacra/opacra.conf` on each seed and add the other seeds as
+`add-priority-node=IP:29960`. Check with `journalctl -u opacrad -f`.
 
 ## 6. Release binaries
 
@@ -101,7 +101,7 @@ Edit `/etc/tacita/tacita.conf` on each seed and add the other seeds as
       `monero-project/monero-gui` or Feather Wallet; for mobile, work with Cake Wallet or
       a light-wallet server (`monero-lws` fork).
 - [ ] **Merchant plugin:** a BTCPay Server / WooCommerce plugin fork (the Monero plugins use
-      `monero-wallet-rpc`, which `tacita-wallet-rpc` replaces with the same API).
+      `monero-wallet-rpc`, which `opacra-wallet-rpc` replaces with the same API).
 
 ## 8. Launch day
 
@@ -110,7 +110,7 @@ Edit `/etc/tacita/tacita.conf` on each seed and add the other seeds as
 2. T−1 hour: seed nodes, explorer and pools running and synced at height 0.
 3. T: announce "mining is open". The 7-day slow start keeps early blocks small, so
    there is no advantage in being first.
-4. Watch the explorer and `tacitad status` on all seeds. Block times settle after about
+4. Watch the explorer and `opacrad status` on all seeds. Block times settle after about
    60 blocks (30 minutes).
 5. After ~1 day: post the first hard-coded checkpoint in the next point release
    (`contrib/launch/make_checkpoint.sh <height>`).
