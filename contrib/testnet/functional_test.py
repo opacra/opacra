@@ -212,9 +212,15 @@ def main():
     h_sent = miner.height()
 
     # --- on-chain inspection
-    wait_height(miner, h_sent + 1, "(waiting for inclusion)", poll=3)
-    time.sleep(2)
-    raw = miner.other("get_transactions", txs_hashes=[txid], decode_as_json=True)["txs"][0]
+    # A block found a moment after sending may have been mined on an older template,
+    # so wait for the transaction itself rather than for the next height.
+    log(f"  waiting for inclusion of {txid[:12]}...")
+    deadline = time.time() + 30 * 60
+    while True:
+        raw = miner.other("get_transactions", txs_hashes=[txid], decode_as_json=True)["txs"][0]
+        if raw.get("block_height", 0) > 0 or time.time() > deadline:
+            break
+        time.sleep(3)
     j = json.loads(raw["as_json"])
     ring_sizes = [len(v["key"]["key_offsets"]) for v in j["vin"]]
     view_tags = all("tagged_key" in o["target"] for o in j["vout"])
