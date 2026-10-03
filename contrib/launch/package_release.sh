@@ -14,7 +14,7 @@ cd "$ROOT"
 #    portable build (cmake -DARCH=x86-64); the default -march=native build only runs
 #    reliably on the CPU it was compiled on.
 BUILD_DIR="${BUILD_DIR:-build/portable}"
-grep -q '^ARCH:STRING=x86-64$' "$BUILD_DIR/CMakeCache.txt" || { echo "$BUILD_DIR is not a portable (-DARCH=x86-64) build" >&2; exit 1; }
+grep -Eq '^ARCH:[A-Z]+=x86-64$' "$BUILD_DIR/CMakeCache.txt" || { echo "$BUILD_DIR is not a portable (-DARCH=x86-64) build" >&2; exit 1; }
 BIN_DIR="opacra-v$VERSION-linux-x64"
 STAGE="$(mktemp -d)"
 mkdir -p "$STAGE/$BIN_DIR"
