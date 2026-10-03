@@ -292,13 +292,12 @@ namespace config
   std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b145029f76646388993c91ca84209b815bff6467bc631500f3a86c2aa332572de9d94d7101aa0a93586b60454f425d180db01995ed2e688be793cbef62f08e324821400609024e4f7061637261206d61696e6e65742067656e65736973207c20323032362d31302d3032207c20507269766174652062792064656661756c742c20617564697461626c652062792063686f6963652e";
   uint32_t const GENESIS_NONCE = 10000;
   // Development fund: receives OPACRA_DEV_FUND_PERCENT of every block subsidy. Must be a
-  // standard address. PLACEHOLDER (development identity): replace with the project's
-  // offline fund wallet before the public testnet / mainnet.
-  std::string const DEV_FUND_ADDRESS = "Pa2TMaoVUYTYLcVxZC6dx9MaRwEKV7J35MnqGbdNR73fPaaY9Lb93WSHnPaJkRWpP61dP9CJkDDte4nrUPh7EZgC1F2J9RMEnt";
+  // standard address. The project's offline mainnet fund wallet (created 3 Oct 2026).
+  std::string const DEV_FUND_ADDRESS = "Pa2TDAomGjCM7y1s2S2APLcrGqhkddoyRgsx2Miqu2eRJKLcayF84VPea6SMcSDnxeg78smaG9fBeTpVj5EL1wbU81m8HT6rPW";
   // The fund's secret view key is public on purpose: anyone can import it into a
   // view-only wallet to audit every payment the fund receives. Nodes check at startup
   // that it belongs to DEV_FUND_ADDRESS.
-  std::string const DEV_FUND_VIEW_KEY = "b8b6a46509df7666faad76401f0844c0db01f9078757e1790a98810300066701";
+  std::string const DEV_FUND_VIEW_KEY = "69416fd0f64a86d2f3053d9ec1ed072daa83e8970d5fb7c63ab81657834a0101";
 
   // Hash domain separators
   const char HASH_KEY_BULLETPROOF_EXPONENT[] = "bulletproof";
@@ -343,13 +342,12 @@ namespace config
     std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b145029f2f9831645742126ae225f9660bf52079f95792919a2a6a8bd9acb57eaf6f514601c3f0f15ec3eb910212e78b99ff0a0a701fb9d578e7942ee4f30956786de8604902234f706163726120746573746e65742067656e65736973207c20323032362d31302d3032";
     uint32_t const GENESIS_NONCE = 10001;
     // Development fund: receives OPACRA_DEV_FUND_PERCENT of every block subsidy. Must be a
-    // standard address. PLACEHOLDER (development identity): replace with the project's
-    // offline fund wallet before the public testnet / mainnet.
-    std::string const DEV_FUND_ADDRESS = "Te16o7GFUJbXASXhxs9usWXfC9M12LNz66TdpJjsj5nYZ13DvBnC4bbMEWBQH6r11EYWZYV5Z1khf3cNWctgFUaR1EV3gCWvv";
+    // standard address. The project's offline testnet fund wallet (created 3 Oct 2026).
+    std::string const DEV_FUND_ADDRESS = "Te1fW4xtitRA7yzFYdkToMJYcxgYdt4BzWswBjAX3HS4CUMFmMEcWScL6QMhoYfYLs4yCR9Cma9Qv31e3eLCF7Du33Wb2ABRJ";
     // The fund's secret view key is public on purpose: anyone can import it into a
     // view-only wallet to audit every payment the fund receives. Nodes check at startup
     // that it belongs to DEV_FUND_ADDRESS.
-    std::string const DEV_FUND_VIEW_KEY = "9c10f63b43365ed3d8f1cc9e69df898326e0cdb4ba305a1d41384448937ab005";
+    std::string const DEV_FUND_VIEW_KEY = "cdf9882d2797df566b2974ee5cc5873c2c97da0addeb8a47018df536858c6f0b";
   }
 
   namespace stagenet

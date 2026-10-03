@@ -59,6 +59,8 @@ python3 coinid.py genesis --reward 2384185791015 \
       `docs/ANONYMITY_NETWORKS.md`.
 - [ ] Leave `checkpoint_dns_domains`, `update_dns_domains` and `blocklist_dns_domains`
       empty until you control DNSSEC-signed domains for them.
+- [x] Mainnet and testnet fund wallets created offline and set in `src/cryptonote_config.h`
+      (3 Oct 2026). Stagenet still uses a placeholder (stagenet is not run publicly).
 - [ ] Development fund (5% of every block): create one wallet per network on an offline
       machine (`opacra-wallet-cli --generate-new-wallet devfund`, add `--testnet` for the
       testnet one), write down the seed, and put each standard address and its secret
