@@ -59,5 +59,12 @@ namespace cryptonote
     bool check_hash(const crypto::hash &hash, difficulty_type difficulty);
     difficulty_type next_difficulty(std::vector<std::uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds);
 
+    // Opacra: minimum difficulty for side-chain blocks. Once the main chain is past its
+    // first hour, a side-chain block whose required difficulty is below
+    // 1/OPACRA_ALT_MIN_DIFFICULTY_DIVISOR of the main chain's next difficulty is refused.
+    // alt_height: height of the side-chain block; main_chain_height: number of blocks in
+    // the main chain (top height + 1).
+    bool alt_difficulty_acceptable(uint64_t alt_height, uint64_t main_chain_height, const difficulty_type &alt_difficulty, const difficulty_type &main_next_difficulty);
+
     std::string hex(difficulty_type v);
 }

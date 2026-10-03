@@ -54,8 +54,10 @@
 // Opacra: blocks may be at most 3 minutes (6 block targets) ahead of a node's clock
 // (Monero: 2 h).  LWMA treats a backwards step after a forward-dated block as a 1 s
 // solve time, so a loose limit lets a few miners inflate difficulty; 180 s keeps
-// the effect small.  Nodes must run NTP.
+// the effect small.  Nodes should run NTP; a block that is only "too new" for
+// this node's clock is rejected without penalising the peer that relayed it.
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              (60*3)
+
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10  // 10 blocks = 5 minutes at 30 s
 
 // Opacra: median-time-past window of 11 blocks (Monero: 60), as recommended for LWMA
@@ -110,6 +112,13 @@
 // DIFFICULTY_STARTUP_GUESS; LWMA then adapts with the blocks available.
 #define DIFFICULTY_STARTUP_BLOCKS                       12
 #define DIFFICULTY_STARTUP_GUESS                        10000
+
+// Opacra: side-chain blocks must have a difficulty of at least 1/4 of the main chain's
+// next difficulty, once both are past the first two LWMA windows (122 blocks, ~1 hour).
+// Stops attackers from walking a side chain's difficulty down to nothing (see
+// alt_difficulty_acceptable() in difficulty.cpp). There is no limit on reorg depth.
+#define OPACRA_ALT_MIN_DIFFICULTY_DIVISOR               4
+#define OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT           (2 * DIFFICULTY_BLOCKS_COUNT)
 
 
 #define CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS_V1   DIFFICULTY_TARGET_V1 * CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS
@@ -301,9 +310,9 @@ namespace config
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 8479;             // "Te"
     uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 11935; // "Tf"
     uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 15263;         // "Tg"
-    uint16_t const P2P_DEFAULT_PORT = 39960;
-    uint16_t const RPC_DEFAULT_PORT = 39961;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT = 39962;
+    uint16_t const P2P_DEFAULT_PORT = 29970;
+    uint16_t const RPC_DEFAULT_PORT = 29971;
+    uint16_t const ZMQ_RPC_DEFAULT_PORT = 29972;
     boost::uuids::uuid const NETWORK_ID = { {
         0x8F, 0xB1, 0x39, 0x6E, 0xD4, 0x92, 0xE2, 0xE5, 0xC9, 0x68, 0x25, 0x15, 0x17, 0x0B, 0x5F, 0x91
       } };
@@ -316,9 +325,9 @@ namespace config
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 28440;            // "Sa"
     uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 22809; // "Si"
     uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 20378;         // "Ss"
-    uint16_t const P2P_DEFAULT_PORT = 49960;
-    uint16_t const RPC_DEFAULT_PORT = 49961;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT = 49962;
+    uint16_t const P2P_DEFAULT_PORT = 29980;
+    uint16_t const RPC_DEFAULT_PORT = 29981;
+    uint16_t const ZMQ_RPC_DEFAULT_PORT = 29982;
     boost::uuids::uuid const NETWORK_ID = { {
         0x0F, 0x57, 0xC4, 0xD1, 0xD3, 0x44, 0x63, 0xD1, 0x3D, 0x6F, 0xFD, 0x9D, 0xD5, 0xF2, 0x40, 0x42
       } };

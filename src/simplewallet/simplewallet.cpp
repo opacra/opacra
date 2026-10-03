@@ -3012,7 +3012,7 @@ bool simple_wallet::set_ignore_outputs_above(const std::vector<std::string> &arg
       return true;
     }
     if (amount == 0)
-      amount = MONEY_SUPPLY;
+      amount = std::numeric_limits<uint64_t>::max();
     m_wallet->ignore_outputs_above(amount);
     m_wallet->rewrite(m_wallet_file, pwd_container->password());
   }

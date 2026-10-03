@@ -89,6 +89,15 @@ DISABLE_VS_WARNINGS(4267)
 // used to overestimate the block reward when estimating a per kB to use
 #define BLOCK_REWARD_OVERESTIMATE (10 * 1000000000000)
 
+// Opacra: running total of coins created. MONEY_SUPPLY is only the size of the main
+// emission curve; tail emission continues after it, so the total keeps growing and
+// only saturates at 2^64-1 (about 160 years of tail emission after the total reaches
+// 10M, i.e. roughly 180 years after launch; saturating is harmless for consensus).
+static inline uint64_t add_generated_coins(uint64_t generated, uint64_t reward)
+{
+  return reward < std::numeric_limits<uint64_t>::max() - generated ? generated + reward : std::numeric_limits<uint64_t>::max();
+}
+
 //------------------------------------------------------------------
 Blockchain::Blockchain(tx_memory_pool& tx_pool) :
   m_db(), m_tx_pool(tx_pool), m_hardfork(NULL), m_timestamps_and_difficulties_height(0), m_reset_timestamps_and_difficulties_height(true), m_current_block_cumul_weight_limit(0), m_current_block_cumul_weight_median(0),
@@ -1199,7 +1208,7 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
   if (!get_block_hash(alt_chain.back().bl, prev_id))
     MERROR("Failed to get block hash of an alternative chain's tip");
   else
-    send_miner_notifications(new_height, seedhash, prev_id, alt_chain.back().already_generated_coins);
+    send_miner_notifications(new_height, seedhash, prev_id, m_db->get_block_already_generated_coins(new_height - 1));
 
   for (const auto& notifier : m_block_notifiers)
   {
@@ -1768,7 +1777,9 @@ bool Blockchain::get_miner_data(uint8_t& major_version, uint64_t& height, crypto
 
   difficulty = get_difficulty_for_next_block();
   median_weight = m_current_block_cumul_weight_median;
-  already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
+  // Opacra: report at most MONEY_SUPPLY to miners and pools (they may compute
+  // (MONEY_SUPPLY - generated) >> 22 without clamping); rewards are identical.
+  already_generated_coins = std::min<uint64_t>(m_db->get_block_already_generated_coins(height - 1), MONEY_SUPPLY);
 
   m_tx_pool.get_block_template_backlog(tx_backlog);
 
@@ -1787,13 +1798,15 @@ bool Blockchain::complete_timestamps_vector(uint64_t start_top_height, std::vect
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   size_t need_elements = BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW - timestamps.size();
   CHECK_AND_ASSERT_MES(start_top_height < m_db->height(), false, "internal error: passed start_height not < " << " m_db->height() -- " << start_top_height << " >= " << m_db->height());
-  size_t stop_offset = start_top_height > need_elements ? start_top_height - need_elements : 0;
-  timestamps.reserve(timestamps.size() + start_top_height - stop_offset);
-  while (start_top_height != stop_offset)
-  {
-    timestamps.push_back(m_db->get_block_timestamp(start_top_height));
-    --start_top_height;
-  }
+  // Opacra: take heights start_top_height, start_top_height-1, ... down to and
+  // including genesis if needed, exactly the blocks the main-chain check uses.
+  // (Monero's loop stopped one block short and so never included genesis, which
+  // made the side-chain check differ from the main-chain check at height 11.)
+  const uint64_t available = start_top_height + 1;
+  const uint64_t take = std::min<uint64_t>(need_elements, available);
+  timestamps.reserve(timestamps.size() + take);
+  for (uint64_t i = 0; i < take; ++i)
+    timestamps.push_back(m_db->get_block_timestamp(start_top_height - i));
   return true;
 }
 //------------------------------------------------------------------
@@ -1915,13 +1928,24 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     bei.bl = b;
     const uint64_t prev_height = alt_chain.size() ? prev_data.height : m_db->get_block_height(b.prev_id);
     bei.height = prev_height + 1;
-    uint64_t block_reward = get_outs_money_amount(b.miner_tx);
     const uint64_t prev_generated_coins = alt_chain.size() ? prev_data.already_generated_coins : m_db->get_block_already_generated_coins(prev_height);
-    bei.already_generated_coins = (block_reward < (MONEY_SUPPLY - prev_generated_coins)) ? prev_generated_coins + block_reward : MONEY_SUPPLY;
+    // Opacra: count only the newly created coins, as the main chain does, not the
+    // miner's fees. Without the block's median weight we use the unpenalised reward,
+    // capped by what the coinbase actually pays (exact unless the block is both
+    // oversized and carries fees, which only affects templates built on it).
+    uint64_t block_reward = get_outs_money_amount(b.miner_tx);
+    {
+      uint64_t expected_reward = 0;
+      if (get_block_reward_at_height(0, 0, prev_generated_coins, expected_reward, hf_version, bei.height))
+        block_reward = std::min(block_reward, expected_reward);
+    }
+    bei.already_generated_coins = add_generated_coins(prev_generated_coins, block_reward);
 
     // verify that the block's timestamp is within the acceptable range
-    // (not earlier than the median of the last X blocks)
-    if(!check_block_timestamp(timestamps, b))
+    // (not earlier than the median of the last X blocks).
+    // Opacra: same rule as the main chain, which skips the check below height
+    // BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW.
+    if(bei.height >= BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW && !check_block_timestamp(timestamps, b))
     {
       MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, has invalid timestamp: " << b.timestamp);
       bvc.m_verifivation_failed = true;
@@ -1939,6 +1963,20 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     // Check the block's hash against the difficulty target for its alt chain
     difficulty_type current_diff = get_next_difficulty_for_alternative_chain(alt_chain, bei);
     CHECK_AND_ASSERT_MES(current_diff, false, "!!!!!!! DIFFICULTY OVERHEAD !!!!!!!");
+
+    // Opacra: refuse side chains whose difficulty has fallen far below ours (see
+    // alt_difficulty_acceptable). Checked before the proof of work because it is
+    // cheap; the sender is penalised like any other invalid block.
+    if (!m_fixed_difficulty)
+    {
+      const difficulty_type main_next_diff = get_difficulty_for_next_block();
+      if (!alt_difficulty_acceptable(bei.height, m_db->height(), current_diff, main_next_diff))
+      {
+        MERROR_VER("Block with id: " << id << std::endl << " for alternative chain has difficulty " << current_diff << ", below 1/" << OPACRA_ALT_MIN_DIFFICULTY_DIVISOR << " of the main chain's " << main_next_diff);
+        bvc.m_verifivation_failed = true;
+        return false;
+      }
+    }
     crypto::hash proof_of_work;
     memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
     if (b.major_version >= RX_BLOCK_VERSION)
@@ -1970,6 +2008,17 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, does not have enough proof of work: " << proof_of_work << std::endl << " expected difficulty: " << current_diff);
       bvc.m_verifivation_failed = true;
       bvc.m_bad_pow = true;
+      return false;
+    }
+
+    // Opacra: a block from the future is only "not yet" valid. Checked after the
+    // proof of work (like Bitcoin's time-too-new), so it cannot be sent for free,
+    // and rejected without blaming the peer: our clock may be the wrong one.
+    if (b.timestamp > (uint64_t)time(NULL) + CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT)
+    {
+      MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, has a timestamp too far in the future: " << b.timestamp << " (check this computer's clock)");
+      bvc.m_verifivation_failed = true;
+      bvc.m_soft_reject = true;
       return false;
     }
 
@@ -4090,9 +4139,13 @@ leave:
   TIME_MEASURE_FINISH(t1);
   TIME_MEASURE_START(t2);
 
+  // Opacra: a block from the future is only "not yet" valid. It is rejected
+  // after the proof-of-work check below, without blaming the peer.
+  const bool block_too_new = bl.timestamp > (uint64_t)time(NULL) + CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT;
+
   // make sure block timestamp is not less than the median timestamp
   // of a set number of the most recent blocks.
-  if(!check_block_timestamp(bl))
+  if(!block_too_new && !check_block_timestamp(bl))
   {
     MERROR_VER("Block with id: " << id << std::endl << "has invalid timestamp: " << bl.timestamp);
     bvc.m_verifivation_failed = true;
@@ -4168,6 +4221,18 @@ leave:
       bvc.m_bad_pow = true;
       goto leave;
     }
+  }
+
+  // Opacra: the proof of work is good, so this is a real block that is only "not
+  // yet" valid. Reject it without blaming the peer (like Bitcoin's time-too-new):
+  // with a 3-minute limit, a node whose clock is a few minutes slow must not ban
+  // honest peers for relaying it. It will be accepted once our clock catches up.
+  if (block_too_new)
+  {
+    MERROR_VER("Block with id: " << id << std::endl << "has a timestamp too far in the future: " << bl.timestamp << " (check this computer's clock)");
+    bvc.m_verifivation_failed = true;
+    bvc.m_soft_reject = true;
+    goto leave;
   }
 
   // If we're at a checkpoint, ensure that our hardcoded checkpoint hash
@@ -4437,7 +4502,10 @@ leave:
   // coins will eventually exceed MONEY_SUPPLY and overflow a uint64. To prevent overflow, cap already_generated_coins
   // at MONEY_SUPPLY. already_generated_coins is only used to compute the block subsidy and MONEY_SUPPLY yields a
   // subsidy of 0 under the base formula and therefore the minimum subsidy >0 in the tail state.
-  already_generated_coins = base_reward < (MONEY_SUPPLY-already_generated_coins) ? already_generated_coins + base_reward : MONEY_SUPPLY;
+  // Opacra: MONEY_SUPPLY is the main-curve size, not a cap: the tail keeps adding
+  // coins, so keep counting (saturating at 2^64-1). get_block_reward() treats any
+  // value >= MONEY_SUPPLY as "tail only", so consensus is unchanged.
+  already_generated_coins = add_generated_coins(already_generated_coins, base_reward);
   if(blockchain_height)
     cumulative_difficulty += m_db->get_block_cumulative_difficulty(blockchain_height - 1);
 
@@ -5745,6 +5813,8 @@ void Blockchain::cache_block_template(const block &b, const cryptonote::account_
 
 void Blockchain::send_miner_notifications(uint64_t height, const crypto::hash &seed_hash, const crypto::hash &prev_id, uint64_t already_generated_coins)
 {
+  // Opacra: see get_miner_data: miners and pools see the total clamped to MONEY_SUPPLY
+  already_generated_coins = std::min<uint64_t>(already_generated_coins, MONEY_SUPPLY);
   if (m_miner_notifiers.empty())
     return;
 

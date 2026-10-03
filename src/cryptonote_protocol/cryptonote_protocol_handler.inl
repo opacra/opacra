@@ -715,6 +715,13 @@ namespace cryptonote
         MLOG_P2P_MESSAGE("-->>NOTIFY_REQUEST_FLUFFY_MISSING_TX: missing_tx_indices.size()=" << missing_tx_req.missing_tx_indices.size() );
         post_notify<NOTIFY_REQUEST_FLUFFY_MISSING_TX>(missing_tx_req, context);
       }
+      else if (bvc.m_soft_reject)
+      {
+        // Opacra: the block has valid proof of work but is ahead of our clock. Not the
+        // peer's fault (our clock may be slow): keep the connection.
+        LOG_PRINT_CCONTEXT_L1("Block " << new_block_hash << " not accepted for now (soft reject), keeping connection");
+        return 1;
+      }
       else // failure for some other reason besides missing txs...
       {
         // drop connection and punish peer
@@ -1542,6 +1549,21 @@ namespace cryptonote
               block_txs,
               false); // <--- process block
 
+            if(bvc.m_verifivation_failed && bvc.m_soft_reject)
+            {
+              // Opacra: the block has valid proof of work but is ahead of our clock. Not
+              // the peer's fault: drop its queued spans and disconnect so syncing can move
+              // on, but don't score or ban it (drop_connections() would add host fails and
+              // block the host).
+              if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
+                LOG_PRINT_CCONTEXT_L1("Block not accepted for now (soft reject), disconnecting without penalty");
+                drop_connection(context, false, true);
+                return 1;
+              }))
+                LOG_ERROR_CCONTEXT("span connection id not found");
+
+              return 1;
+            }
             if(bvc.m_verifivation_failed)
             {
               drop_connections(span_origin);

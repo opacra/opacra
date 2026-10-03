@@ -1855,7 +1855,16 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::recalculate_difficulties()
   {
-    m_blockchain_storage.recalculate_difficulties();
+    // Opacra: Monero rescans from its last difficulty checkpoint to repair a
+    // historical bug. Opacra has no such history and no difficulty checkpoints, so
+    // a full rescan would start at genesis and hold the chain lock longer every
+    // week. Recheck only the last week of blocks.
+    const uint64_t height = m_blockchain_storage.get_current_blockchain_height();
+    const uint64_t window = SLOW_START_BLOCKS; // 20,160 blocks = 7 days
+    if (height > window + 1)
+      m_blockchain_storage.recalculate_difficulties(height - window);
+    else
+      m_blockchain_storage.recalculate_difficulties();
     return true;
   }
   //-----------------------------------------------------------------------------------------------

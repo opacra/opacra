@@ -179,6 +179,21 @@ namespace cryptonote {
   //
   // Inputs are the timestamps and cumulative difficulties of the most recent blocks in
   // chain order (oldest first), genesis excluded.  Only the last N+1 entries are used.
+  // Opacra: LWMA lets a side chain's difficulty fall as fast as its timestamps claim
+  // slow blocks, and with no checkpoints a side chain may fork from far back, where
+  // hours of "slow" timestamps are allowed. That let an attacker walk a side chain's
+  // difficulty down to almost nothing and flood nodes with free blocks. A side chain
+  // that has to compete with ours never needs a much lower difficulty than ours, so a
+  // floor of 1/4 of the main chain's difficulty stops the flood without limiting reorg
+  // depth. It starts once the main chain has two full LWMA windows (about an hour), so
+  // launch-day swings from the startup guess cannot split nodes.
+  bool alt_difficulty_acceptable(uint64_t alt_height, uint64_t main_chain_height, const difficulty_type &alt_difficulty, const difficulty_type &main_next_difficulty)
+  {
+    if (alt_height < OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT || main_chain_height < OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT)
+      return true;
+    return alt_difficulty >= main_next_difficulty / OPACRA_ALT_MIN_DIFFICULTY_DIVISOR;
+  }
+
   difficulty_type next_difficulty(std::vector<uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds) {
     CHECK_AND_ASSERT_THROW_MES(timestamps.size() == cumulative_difficulties.size(), "LWMA: timestamps/difficulties size mismatch");
 

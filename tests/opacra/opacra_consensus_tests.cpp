@@ -49,6 +49,11 @@ static void test_emission()
   EXPECT_EQ(r, TAIL_EMISSION_REWARD);
   EXPECT(cryptonote::get_block_reward(0, 0, MONEY_SUPPLY + 12345, r, 16)); // defensive: no underflow
   EXPECT_EQ(r, TAIL_EMISSION_REWARD);
+  // the daemon's generated-coins total keeps counting past MONEY_SUPPLY (tail emission)
+  EXPECT(cryptonote::get_block_reward(0, 0, MONEY_SUPPLY + MONEY_SUPPLY / 2, r, 16)); // (2x would overflow uint64)
+  EXPECT_EQ(r, TAIL_EMISSION_REWARD);
+  EXPECT(cryptonote::get_block_reward(0, 0, UINT64_MAX, r, 16));
+  EXPECT_EQ(r, TAIL_EMISSION_REWARD);
   // Monero's size penalty still applies: 1.5x the median loses a quarter of the reward
   EXPECT(cryptonote::get_block_reward(300000, 450000, 0, r, 16));
   EXPECT_EQ(r, PENALISED);
@@ -126,6 +131,62 @@ static void test_lwma()
   EXPECT_EQ(difficulty_type(cryptonote::next_difficulty_64(ts, cd64, DIFFICULTY_TARGET_V2)), lwma(ts, cd));
 }
 
+// Side chain forked from a mature main chain at difficulty D0. Each new side block is
+// stamped `claim` seconds after the previous one, as long as that stays within real
+// time (fork time + `available` seconds + the future limit). Returns how many side
+// blocks the difficulty floor lets through and the lowest difficulty among them.
+static void side_chain_attack(uint64_t claim, uint64_t available, size_t &accepted, difficulty_type &lowest)
+{
+  const difficulty_type D0 = 150000000;
+  std::vector<uint64_t> ts; std::vector<difficulty_type> cd;
+  series(DIFFICULTY_WINDOW + 1, 30, D0, ts, cd);          // main chain history up to the fork
+  const uint64_t main_height = 100000;                     // mature main chain
+  const difficulty_type main_next = lwma(ts, cd);
+  const uint64_t fork_time = ts.back();
+  accepted = 0; lowest = main_next;
+  for (size_t i = 0; i < 2000; ++i)
+  {
+    const difficulty_type d = lwma(ts, cd);
+    if (!cryptonote::alt_difficulty_acceptable(main_height - 50 + i, main_height, d, main_next))
+      break;
+    ++accepted;
+    if (d < lowest) lowest = d;
+    uint64_t t = ts.back() + claim;
+    if (t > fork_time + available + CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT)
+      t = ts.back() + 1;                                   // out of claimable time
+    ts.push_back(t); cd.push_back(cd.back() + d);
+  }
+}
+
+static void test_alt_difficulty_floor()
+{
+  using cryptonote::alt_difficulty_acceptable;
+  const difficulty_type main_next = 1000000;
+  const uint64_t from = OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT;
+  EXPECT_EQ(from, uint64_t(122));
+  // the floor is 1/4 of the main chain's next difficulty
+  EXPECT(alt_difficulty_acceptable(5000, 5000, 250000, main_next));
+  EXPECT(!alt_difficulty_acceptable(5000, 5000, 249999, main_next));
+  EXPECT(alt_difficulty_acceptable(5000, 5000, 9000000, main_next));   // harder side chains always fine
+  // not applied in the first hour of either chain (startup guess, launch swings)
+  EXPECT(alt_difficulty_acceptable(from - 1, 5000, 1, main_next));
+  EXPECT(alt_difficulty_acceptable(5000, from - 1, 1, main_next));
+  EXPECT(!alt_difficulty_acceptable(from, from, 1, main_next));
+
+  // an honest competing side chain (blocks on target) is never refused
+  size_t accepted; difficulty_type lowest;
+  side_chain_attack(30, 1000000000, accepted, lowest);
+  EXPECT_EQ(accepted, size_t(2000));
+  // attack: claim the maximum 6T per block from a fork with unlimited claimable time
+  // (e.g. a fork from long ago). Without the floor the difficulty falls to 1; with it,
+  // the side chain is cut off and no accepted block is cheaper than 1/4 of the main chain.
+  side_chain_attack(6 * DIFFICULTY_TARGET_V2, 1000000000, accepted, lowest);
+  std::printf("side-chain attack at 6T per block: %zu blocks accepted before the floor, lowest difficulty %s (main chain ~148500000)\n",
+              accepted, str(lowest).c_str());
+  EXPECT(accepted < 200);
+  EXPECT(lowest >= difficulty_type(150000000) * 99 / 100 / 4);
+}
+
 static void test_hardforks_and_identity()
 {
   EXPECT_EQ(num_mainnet_hard_forks, (size_t)2);
@@ -158,6 +219,7 @@ int main()
   test_emission();
   test_slow_start();
   test_lwma();
+  test_alt_difficulty_floor();
   test_hardforks_and_identity();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
