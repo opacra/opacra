@@ -107,6 +107,8 @@ lines += [
     "- Behaviour under real-world latency, many peers, or adversarial miners (use the public testnet).",
     "- Blocks above the median weight (the slow-start size cap is covered by `tests/opacra`).",
     "- Hardware wallets and the GUI (not part of this fork).",
+    "- Side-chain, future-timestamp and slow-clock rules: `contrib/testnet/block_rules_test.py`;",
+    "  the side-chain difficulty floor: `tests/opacra`. Review: `docs/REVIEW_2026-10.md`.",
     "",
     f"Genesis hash: `{report['genesis_hash']}`",
 ]
