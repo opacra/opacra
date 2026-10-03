@@ -1,4 +1,4 @@
-# systemd unit for a Opacra node / seed node
+# systemd unit for an Opacra node / seed node
 # Install: sudo cp opacrad.service /etc/systemd/system/ && sudo systemctl enable --now opacrad
 [Unit]
 Description=Opacra full node (opacrad)

@@ -48,16 +48,23 @@ The Monero block-size penalty is then applied as usual, and fees are added.
 | 10 years | 9,183,710 OPCA | 91.8% |
 | 15 years | 9,767,059 OPCA | 97.7% |
 
-- Initial full reward: 2.384185791015 OPCA per block (~6,866 OPCA per day).
+- Genesis reward: 2.384185791015 OPCA (`MONEY_SUPPLY >> 22`). Because of the slow start,
+  the first full-reward block is 20,160, which pays 2.378462570010 OPCA (~6,850 OPCA per day).
 - Half-life of the remaining main supply: 2.76 years.
 - Tail emission starts at height ≈16,219,000 (~15.4 years): 0.05 OPCA per block,
   ~52,596 OPCA a year, which is ~0.5% a year at that point and falling.
 - Slow start: during the first 20,160 blocks (7 days) rewards rise linearly from 0,
   so launch-day miners cannot capture a large share before others join. About 24,000
   OPCA is emitted in that week instead of ~48,000 (the rest stays in the curve).
-- Genesis output: 2.384185791015 OPCA to a random key whose secret was discarded. It is
-  a pre-RingCT output with a unique amount, so no valid 16-member ring can reference
-  it: unspendable by construction.
+- Genesis output: 2.384185791015 OPCA. It is a pre-RingCT output with a unique amount, so
+  no valid 16-member ring can reference it. From the mainnet genesis on, its key is a
+  "nothing up my sleeve" point derived from the genesis message (`coinid.py`), so no one
+  has ever held a key for it, even if a later upgrade made old outputs spendable. (The
+  development genesis used a random key whose secret was discarded.)
+- The daemon's running total of generated coins keeps counting past 10M (tail emission).
+  Rewards switch to the tail at height ≈16,219,343, when the main-curve reward falls
+  below 0.05 OPCA; the total itself reaches 10M at height ≈20,413,646 (~19.4 years).
+  Miners and pools (`get_miner_data`, ZMQ `miner_data`) see the total clamped to 10M.
 - **No premine, no developer fee, no ICO.**
 
 The table is produced by `contrib/sim/opacra_params.py` (bit-exact integer model).
@@ -67,16 +74,21 @@ The table is produced by `contrib/sim/opacra_params.py` (bit-exact integer model
 For the next block, take the last N+1 blocks (genesis excluded), with N = 60:
 
 ```
-L = Σ_{i=1..N} i · min(6T, t_i − t_{i−1})      out-of-order timestamps count as 1 s
+L = Σ_{i=1..N} i · min(6T, t_i − p_{i−1})      p_i = max(t_i, p_{i−1} + 1), p_0 = t_0
 L = max(L, N²T/20)
 D_next = (C_N − C_0) · T · (N+1) · 99 / (200 · L)        C = cumulative difficulty
 ```
 
-Integer arithmetic only (256-bit intermediates). Recent blocks carry the most weight,
+Solve times are measured from the latest timestamp seen so far (`p`), so a block
+dated earlier than its predecessor counts as 1 s and the next block is measured from
+that adjusted time. Integer arithmetic only (256-bit intermediates). Recent blocks carry the most weight,
 so the algorithm follows hash-rate changes within about N blocks while staying stable
 (steady-state difficulty noise ~13%). Simulated on 20 random runs with a 10× hash-rate
-spike for 200 blocks: difficulty reached 80% of the new level after ~63 blocks and mean
-block time over the whole run stayed at 31.5 s. See `contrib/sim/`.
+spike for 200 blocks (3,000-block runs): difficulty reached 80% of the new level after
+~61 blocks and the mean block time over the run was ~30.9 s. After a sudden 90% drop
+in hash rate the first 60 blocks average ~106 s and difficulty is back within 10% after
+~110–165 blocks (the 6T cap limits how fast it can fall). A miner who always uses the
+maximum future timestamp raises difficulty a few percent and gains nothing.
 
 Why not Monero's algorithm: its 720-block window with a 15-block lag takes about a
 day to react at 2-minute blocks, which invites profit-switching and rented hash power
@@ -88,7 +100,7 @@ on a small chain. LWMA is the most widely deployed replacement in CryptoNote cha
 |---|---|---|---|
 | Address prefix (standard / integrated / subaddress) | 30598 `Pa` / 24839 `Pi` / 22408 `Ps` | 8479 `Te` / 11935 `Tf` / 15263 `Tg` | 28440 `Sa` / 22809 `Si` / 20378 `Ss` |
 | Address length | 98 / 109 / 98 characters | 97 / 108 / 97 | 98 / 109 / 98 |
-| P2P / RPC / ZMQ ports | 29960 / 29961 / 29962 | 39960 / 39961 / 39962 | 49960 / 49961 / 49962 |
+| P2P / RPC / ZMQ ports | 29960 / 29961 / 29962 | 29970 / 29971 / 29972 | 29980 / 29981 / 29982 |
 | Network ID | `BC2D893E-96B8-F691-199F-373CE5BC4718` | `8FB1396E-D492-E2E5-C968-2515170B5F91` | `0F57C4D1-D344-63D1-3D6F-FD9DD5F24042` |
 | Genesis message | "Opacra mainnet genesis \| 2026-10-02 \| Private by default, auditable by choice." | "Opacra testnet genesis \| 2026-10-02" | "Opacra stagenet genesis \| 2026-10-02" |
 
@@ -123,26 +135,46 @@ Consensus:
 9. `src/cryptonote_core/cryptonote_tx_utils.cpp`, `src/cryptonote_basic/cryptonote_format_utils.cpp`:
    Monero's hard-coded proof-of-work and block-id exceptions for its block 202612 removed
    (left in place they would let any block at Opacra height 202612 skip proof of work).
-10. `src/cryptonote_core/blockchain.cpp` (`build_alt_chain`): side chains use only the newest
-    11 timestamps for the median-time-past check, exactly like the main chain.
+10. `src/cryptonote_core/blockchain.cpp` (`build_alt_chain`, `complete_timestamps_vector`,
+    `handle_alternative_block`): side chains use exactly the main chain's median-time-past
+    rule: the 11 previous blocks including genesis, and no check below height 11.
 11. Slow start also forbids blocks above the effective median (the reward is too small for
     Monero's size penalty to deter chain bloat); `tx_pool.cpp` leaves room for the coinbase.
+12. Side-chain difficulty floor (`difficulty.cpp` `alt_difficulty_acceptable`, used in
+    `blockchain.cpp`): once the main chain is past 122 blocks (two LWMA windows, ~1 hour),
+    a side-chain block whose required difficulty is below 1/4 of the main chain's next
+    difficulty is refused. Without checkpoints, a side chain forked from far back could
+    claim hours of slow blocks and walk its difficulty down to almost nothing, then flood
+    nodes with free blocks. A competing chain that could actually win never needs a much
+    lower difficulty than ours, so honest reorgs of any depth still work. Side-chain
+    blocks are also held to the 3-minute future time limit.
+13. Future time limit handling (`blockchain.cpp`, `cryptonote_protocol_handler.inl`): a block
+    with valid proof of work that is only ahead of this node's clock is rejected for now
+    without penalising the peer (like Bitcoin's time-too-new), so a node with a slow clock
+    cannot end up banning honest peers. The block is fetched again once the node's clock
+    allows it (the next block arrives as an orphan and triggers a sync).
+14. The generated-coins total is no longer capped at `MONEY_SUPPLY` (it now means the main
+    curve, not 2^64−1); consensus is unchanged because rewards treat any total at or above
+    10M as tail-only. Side-chain totals count only newly created coins, not fees.
 
 Network and wallet:
 
-12. `src/coin_network.h` (new): seed nodes, DNS seeds, Tor/I2P seeds, DNS checkpoint,
+15. `src/coin_network.h` (new): seed nodes, DNS seeds, Tor/I2P seeds, DNS checkpoint,
    update and blocklist domains, download URLs, DNSSEC probe host. All empty or
    placeholders; nothing points at Monero infrastructure.
-13. `src/p2p/net_node.h/.inl`, `src/checkpoints/checkpoints.cpp`, `src/common/updates.cpp`,
+16. `src/p2p/net_node.h/.inl`, `src/checkpoints/checkpoints.cpp`, `src/common/updates.cpp`,
     `src/common/dns_utils.cpp`: read the lists above.
-14. `src/wallet/wallet2.cpp`: hard-fork checks look versions up by value (the table
+17. `src/wallet/wallet2.cpp`: hard-fork checks look versions up by value (the table
     skips versions 2–15); height estimate without Monero's rollback offsets; "recent
     output" window computed from the block time.
-15. `src/simplewallet/simplewallet.cpp/.h`: `donate` uses `OPACRA_DONATION_ADDR`
+18. `src/simplewallet/simplewallet.cpp/.h`: `donate` uses `OPACRA_DONATION_ADDR`
     (empty = disabled) instead of the Monero donation address.
-16. `src/cryptonote_core/cryptonote_core.cpp`: sync batch size no longer keyed to Monero's v4
+19. `src/cryptonote_core/cryptonote_core.cpp`: sync batch size no longer keyed to Monero's v4
     height; the block-rate monitor reads enough blocks for 30 s targets and computes its
-    Poisson terms in log space (they overflowed to NaN above ~170 blocks).
+    Poisson terms in log space (they overflowed to NaN above ~170 blocks). The weekly
+    difficulty recheck covers the last 20,160 blocks instead of the whole chain.
+20. Wallets: `ignore-outputs-above` defaults to 2^64−1 (Monero used `MONEY_SUPPLY`, which
+    is no longer 2^64−1); OpenAlias records use `oa1:opca`.
 
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,

@@ -27,12 +27,15 @@ and the `HASH_KEY_MESSAGE_SIGNING` string.
 
 ```bash
 cd contrib/coin-identity
-python3 coinid.py prefix Ta          # or your new prefix: standard address
-python3 coinid.py prefix Ti --integrated
-python3 coinid.py prefix Ts          # subaddress
+python3 coinid.py prefix Pa          # standard address (Opacra: 30598)
+python3 coinid.py prefix Pi --integrated   # integrated (Opacra: 24839)
+python3 coinid.py prefix Ps          # subaddress (Opacra: 22408)
 python3 coinid.py network-id         # run 3x: mainnet, testnet, stagenet
 python3 coinid.py genesis --reward 2384185791015 \
-  --message "NewName genesis | <date> | <a headline from that day's newspaper>"
+  --message "Opacra mainnet genesis | <date> | <a headline from that day's newspaper>"
+# The output key is a "nothing up my sleeve" point derived from the message, so the
+# genesis transaction is reproducible from the message alone and has no secret key.
+# The current development genesis predates this: regenerate it for mainnet.
 ```
 
 - [ ] Put the prefixes, network IDs and genesis transactions into `src/cryptonote_config.h`.
@@ -61,11 +64,14 @@ python3 coinid.py genesis --reward 2384185791015 \
 
 ## 4. Public testnet (2–4 weeks)
 
-- [ ] Build the release candidate, run 2–3 testnet seed nodes (`--testnet`, port 39960).
+- [ ] Build the release candidate, run 2–3 testnet seed nodes:
+      `bash seed-node-setup.sh <package> testnet` (P2P port 29970; see section 5).
 - [ ] Invite miners and developers; run the block explorer and pool against testnet.
 - [ ] Run `contrib/testnet/functional_test.py` on the release candidate.
-- [ ] Get the consensus diff reviewed by someone independent (see `docs/OPACRA_SPEC.md` §5).
-      A paid audit of the changed files is small (the diff is a few hundred lines).
+- [x] Independent AI review of the consensus diff, October 2026 (`docs/REVIEW_2026-10.md`).
+- [ ] Paid human audit of the changed files before mainnet (see `docs/OPACRA_SPEC.md` §5);
+      the diff is a few hundred lines.
+- [ ] Decide the block-size constants for 30 s blocks (`docs/REVIEW_2026-10.md`, open decision).
 - [ ] Fix, rebuild and restart testnet if anything changes.
 
 ## 5. Seed nodes
@@ -73,18 +79,21 @@ python3 coinid.py genesis --reward 2384185791015 \
 On each Ubuntu 24.04 VPS:
 
 ```bash
-scp opacra-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,opacrad.service,opacra.conf} root@SEED:
-ssh root@SEED 'bash seed-node-setup.sh opacra-linux-x64.tar.gz'
+scp dist/opacra-v<version>-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,opacrad.service,opacra.conf} root@SEED:
+ssh root@SEED 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz'            # mainnet
+ssh root@SEED 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz testnet'    # public testnet
 ```
 
 Edit `/etc/opacra/opacra.conf` on each seed and add the other seeds as
-`add-priority-node=IP:29960`. Check with `journalctl -u opacrad -f`.
+`add-priority-node=IP:29960` (testnet: `IP:29970`). Check with `journalctl -u opacrad -f`.
 
 ## 6. Release binaries
 
-- [ ] Reproducible builds for Linux x86_64/aarch64, Windows and macOS with Monero's
-      tooling: `contrib/guix/guix-build` (see `contrib/guix/README.md`). It downloads its
-      toolchain, so run it on a normal Linux machine.
+- [ ] Today: `contrib/launch/package_release.sh` packages a portable Linux x86_64 build
+      (`-DARCH=x86-64`) with SHA256SUMS. It is not bit-for-bit reproducible.
+- [ ] Before mainnet: port Monero's reproducible build descriptors in `contrib/gitian`
+      (they still clone monero-project/monero and name files `monero-*`) to this
+      repository, for Linux x86_64/aarch64, Windows and macOS.
 - [ ] Two people build independently and compare hashes.
 - [ ] Publish `hashes.txt` signed with the release GPG key, and the source tag.
 

@@ -34,7 +34,7 @@ Solo, against your own node (RPC on 29961):
 ```
 
 `--coin monero` tells XMRig the block format; Opacra uses the same format and algorithm.
-Tested with XMRig 6.26.0 (see docs/TEST_REPORT.md).
+Tested with XMRig 6.26.0 (see docs/XMRIG_TEST.md).
 
 Pool:
 

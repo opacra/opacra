@@ -86,6 +86,14 @@ def simulate(hashrate_fn, blocks=3000, seed=1, start_time=0):
     return out
 
 
+def emission_at(height):
+    """Total generated (incl. genesis) before the block at `height`."""
+    gen = base_reward(0)
+    for h in range(1, height):
+        gen = min(gen + block_reward(gen, h), 2 ** 64 - 1)
+    return gen
+
+
 def emission_table(years=(1, 2, 3, 4, 5, 10, 15, 20, 30)):
     """Coins emitted after N years (closed-form per block, exact integer loop for slow start)."""
     gen = base_reward(0)  # genesis output (burned)
@@ -98,7 +106,7 @@ def emission_table(years=(1, 2, 3, 4, 5, 10, 15, 20, 30)):
         r = block_reward(gen, h)
         if tail_start is None and base_reward(gen) == TAIL:
             tail_start = h
-        gen = min(gen + r, MONEY_SUPPLY) if gen + r <= MONEY_SUPPLY else MONEY_SUPPLY
+        gen = min(gen + r, 2 ** 64 - 1)  # the daemon keeps counting past MONEY_SUPPLY (tail emission)
         if h in targets:
             rows.append((targets[h], gen))
         h += 1
@@ -106,6 +114,7 @@ def emission_table(years=(1, 2, 3, 4, 5, 10, 15, 20, 30)):
 
 
 if __name__ == "__main__":
-    print("Initial full block reward: %.6f OPCA" % (base_reward(base_reward(0)) / COIN))
+    print("Genesis reward: %.12f OPCA" % (base_reward(0) / COIN))
+    print("First full-reward block (%d): %.12f OPCA" % (SLOW_START, block_reward(emission_at(SLOW_START), SLOW_START) / COIN))
     print("Reward at height 1 (slow start): %.9f OPCA" % (block_reward(base_reward(0), 1) / COIN))
     print("Half-life of remaining main supply: %.2f years" % (2 ** EMISSION_SPEED_FACTOR * math.log(2) / BLOCKS_PER_YEAR))

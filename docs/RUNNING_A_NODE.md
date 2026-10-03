@@ -1,4 +1,4 @@
-# Running a Opacra node
+# Running an Opacra node
 
 ## Hardware
 
@@ -20,16 +20,21 @@ for home nodes; seed nodes should keep the full chain.
 | 29962/tcp | ZMQ RPC | No |
 | (choose) e.g. 29969/tcp | Restricted RPC for light wallets | Optional |
 
+Testnet uses 29970 / 29971 / 29972 and stagenet 29980 / 29981 / 29982 for the same three services.
+
 ## Quick setup on Ubuntu 24.04 (VPS)
 
 ```bash
-scp opacra-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,opacrad.service,opacra.conf} root@VPS:
-ssh root@VPS 'bash seed-node-setup.sh opacra-linux-x64.tar.gz'
+scp dist/opacra-v<version>-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,opacrad.service,opacra.conf} root@VPS:
+ssh root@VPS 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz'           # mainnet
+ssh root@VPS 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz testnet'   # public testnet
 ```
 
 This installs the runtime libraries, `chrony` for clock sync, an `opacra` system user,
 the binaries in `/opt/opacra`, config in `/etc/opacra/opacra.conf`, data in
-`/var/lib/opacra`, the systemd unit and a firewall rule for 29960.
+`/var/lib/opacra` and the systemd unit. If `ufw` is already active it opens the P2P port
+(29960 mainnet, 29970 testnet); it never turns a firewall on by itself, so it is safe on
+a server that also runs a website.
 
 ```bash
 systemctl status opacrad
@@ -58,7 +63,8 @@ reverse proxy with TLS if you publish it as `node.yourcoin.org`.
 ## Tor / I2P
 
 Everything in `docs/ANONYMITY_NETWORKS.md` applies; replace `monerod` with `opacrad` and
-port 18083 with a port of your choice (for example 29963). Onion seed addresses go in
+port 18083 with a port of your choice (for example 29965; 29963 is the ZMQ publisher
+in the example config). Onion seed addresses go in
 `src/coin_network.h`.
 
 ## Upgrades

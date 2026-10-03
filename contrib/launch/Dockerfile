@@ -1,4 +1,4 @@
-# Build and run a Opacra node in a container.
+# Build and run an Opacra node in a container (the only Dockerfile in this repository).
 #   docker build -t opacra -f contrib/launch/Dockerfile .
 #   docker run -d --name opacrad -p 29960:29960 -v opacra-data:/data opacra
 FROM ubuntu:24.04 AS build
@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
-RUN git submodule update --init --recursive || true
+# submodules must be checked out before building (git submodule update --init --recursive)
 RUN mkdir -p build/release && cd build/release && \
     cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DUSE_DEVICE_TREZOR=OFF -DARCH=x86-64 ../.. && \
     make -j"$(nproc)" daemon simplewallet wallet_rpc_server
@@ -21,5 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=build /src/build/release/bin/ /usr/local/bin/
 USER opacra
 VOLUME /data
-EXPOSE 29960 29961
-ENTRYPOINT ["opacrad", "--data-dir=/data", "--non-interactive", "--p2p-bind-ip=0.0.0.0", "--rpc-bind-ip=127.0.0.1"]
+EXPOSE 29960
+# Default flags live in CMD. Passing your own arguments replaces all of them, so repeat the
+# ones you need: docker run ... opacra --data-dir=/data --non-interactive --p2p-bind-ip=0.0.0.0 --testnet
+ENTRYPOINT ["opacrad"]
+CMD ["--data-dir=/data", "--non-interactive", "--p2p-bind-ip=0.0.0.0", "--rpc-bind-ip=127.0.0.1"]

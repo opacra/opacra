@@ -80,8 +80,9 @@ make opacra_consensus_tests && ./bin/opacra_consensus_tests
 
 Or with Docker: `docker build -t opacra -f contrib/launch/Dockerfile .`
 
-Portable release binaries (Windows, macOS, static Linux) are built with Monero's
-reproducible `contrib/depends` / `contrib/guix` system. See
+Linux release packages are built with `contrib/launch/package_release.sh` from a
+portable (`-DARCH=x86-64`) build. Monero's reproducible build descriptors in
+`contrib/gitian` still build Monero and must be ported before mainnet; see
 [docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md#6-release-binaries).
 
 ## Quick start
@@ -94,7 +95,7 @@ reproducible `contrib/depends` / `contrib/guix` system. See
 ./opacra-wallet-cli --generate-new-wallet mywallet
 
 # 3. mine to your wallet (daemon console, or: ./opacrad --start-mining <address> --mining-threads 4)
-./opacrad start_mining Ta... 4
+./opacrad start_mining Pa... 4
 ```
 
 A complete private network on one machine (3 nodes, mainnet rules), plus an end-to-end

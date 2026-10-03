@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-End-to-end functional test of a Opacra network on one machine.
+End-to-end functional test of an Opacra network on one machine.
 
   1. starts 3 isolated nodes running mainnet consensus rules (contrib/testnet/localnet.sh)
   2. creates 3 wallets (opacra-wallet-rpc) and mines to wallet 1

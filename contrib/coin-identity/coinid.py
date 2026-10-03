@@ -104,6 +104,28 @@ def is_valid_point(s: bytes) -> bool:
         return False
 
 
+def nums_point(label: bytes) -> bytes:
+    """A "nothing up my sleeve" point: hash the label, decode it as a point and
+    multiply by the cofactor 8.  Nobody knows its discrete log, so nobody holds a
+    secret key for it.  Deterministic, so anyone can reproduce it from the label."""
+    ctr = 0
+    while True:
+        h = keccak256(b"Opacra NUMS point|" + label + b"|" + ctr.to_bytes(4, "little"))
+        ctr += 1
+        y = int.from_bytes(h, "little") & ((1 << 255) - 1)
+        if y >= Q:
+            continue
+        try:
+            p = _decode_point(h)
+        except ValueError:
+            continue
+        p8 = _scalarmult(p, 8)
+        enc = _encode_point(p8)
+        if enc == _encode_point((0, 1, 1, 0)):  # identity: low-order input
+            continue
+        return enc
+
+
 def gen_keypair():
     """Random CryptoNote keypair: secret scalar (mod l) and public point s*G."""
     sec = secrets.randbelow(L - 1) + 1
@@ -177,12 +199,16 @@ def find_prefixes(target: str, max_prefix: int = 1 << 21, extra_len: int = 0, li
 def genesis_tx(reward: int, message: str = "", unlock_window: int = 60):
     """Version-1 coinbase for block 0, same layout as Monero's GENESIS_TX.
 
-    The output goes to a fresh random point whose secret is discarded.  It is a
-    pre-RingCT output with a unique amount, so no valid ring of the required size
-    can ever reference it: the genesis reward is unspendable by construction.
+    The output key and the transaction public key are "nothing up my sleeve"
+    points derived from the message (see nums_point), so nobody has ever held a
+    secret key for the genesis output, even if a future upgrade (such as FCMP++)
+    made old pre-RingCT outputs spendable.  Today it is also unspendable because it
+    has a unique amount and no ring of the required size can reference it.  The
+    whole transaction is reproducible from the message alone.
     """
-    _, out_key = gen_keypair()
-    _, tx_pub = gen_keypair()
+    label = message.encode("utf-8")
+    out_key = nums_point(b"genesis output|" + label)
+    tx_pub = nums_point(b"genesis txpub|" + label)
     extra = b"\x01" + tx_pub                      # TX_EXTRA_TAG_PUBKEY
     if message:
         msg = message.encode("utf-8")
