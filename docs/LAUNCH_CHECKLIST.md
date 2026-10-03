@@ -59,6 +59,15 @@ python3 coinid.py genesis --reward 2384185791015 \
       `docs/ANONYMITY_NETWORKS.md`.
 - [ ] Leave `checkpoint_dns_domains`, `update_dns_domains` and `blocklist_dns_domains`
       empty until you control DNSSEC-signed domains for them.
+- [ ] Development fund (5% of every block): create one wallet per network on an offline
+      machine (`opacra-wallet-cli --generate-new-wallet devfund`, add `--testnet` for the
+      testnet one), write down the seed, and put each standard address and its secret
+      view key (`viewkey` command) into `DEV_FUND_ADDRESS` / `DEV_FUND_VIEW_KEY` in
+      `src/cryptonote_config.h`. The view keys are published so anyone can audit the fund
+      (audit wallets must scan coinbase outputs, i.e. not use `refresh-type no-coinbase`).
+      The current values are development placeholders with no usable spend key.
+      Changing the fund address after launch is a hard fork, so decide on a 2-of-3 multisig
+      wallet before mainnet (its combined address and view key go into the config).
 - [ ] Optional community fund: a mainnet address in `OPACRA_DONATION_ADDR`
       (`src/simplewallet/simplewallet.h`). Publish its view key so anyone can audit it.
 
@@ -115,7 +124,8 @@ Edit `/etc/opacra/opacra.conf` on each seed and add the other seeds as
 ## 8. Launch day
 
 1. T−7 days: announce the exact launch time, the release tag, binary hashes and the
-   genesis hash. State clearly that there is **no premine**.
+   genesis hash. State clearly that there is **no premine** and that 5% of every block
+   goes to the development fund, with the fund's address and view key.
 2. T−1 hour: seed nodes, explorer and pools running and synced at height 0.
 3. T: announce "mining is open". The 7-day slow start keeps early blocks small, so
    there is no advantage in being first.

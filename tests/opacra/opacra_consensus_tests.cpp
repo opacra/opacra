@@ -15,6 +15,9 @@
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/difficulty.h"
 #include "hardforks/hardforks.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
+#include "string_tools.h"
 
 using cryptonote::difficulty_type;
 
@@ -195,6 +198,101 @@ static void test_alt_difficulty_floor()
   EXPECT(lowest >= difficulty_type(150000000) * 99 / 100 / 4);
 }
 
+static void test_dev_fund()
+{
+  using namespace cryptonote;
+  // 5% of the subsidy, none for genesis, floor division, no overflow
+  EXPECT_EQ(get_dev_fund_share(FULL, 0), uint64_t(0));
+  EXPECT_EQ(get_dev_fund_share(FULL, 1), FULL * 5 / 100);
+  EXPECT_EQ(get_dev_fund_share(TAIL_EMISSION_REWARD, 50000000), uint64_t(2500000000));   // 0.0025 OPCA of the tail
+  EXPECT_EQ(get_dev_fund_share(19, 7), uint64_t(0));
+  EXPECT_EQ(get_dev_fund_share(UINT64_MAX, 7), (uint64_t)((unsigned __int128)UINT64_MAX * 5 / 100));
+
+  // every network has a valid standard fund address; regtest uses mainnet's
+  account_public_address main_addr, test_addr, stage_addr, fake_addr;
+  EXPECT(get_dev_fund_address(MAINNET, main_addr));
+  EXPECT(get_dev_fund_address(TESTNET, test_addr));
+  EXPECT(get_dev_fund_address(STAGENET, stage_addr));
+  EXPECT(get_dev_fund_address(FAKECHAIN, fake_addr));
+  EXPECT(main_addr == fake_addr);
+  EXPECT(!(main_addr == test_addr));
+
+  // the published view key belongs to each network's fund address
+  crypto::secret_key fund_view;
+  account_public_address keys_addr;
+  EXPECT(get_dev_fund_keys(MAINNET, keys_addr, fund_view));
+  EXPECT(keys_addr == main_addr);
+  crypto::secret_key other_view;
+  EXPECT(get_dev_fund_keys(TESTNET, keys_addr, other_view));
+  EXPECT(keys_addr == test_addr);
+  EXPECT(get_dev_fund_keys(STAGENET, keys_addr, other_view));
+  EXPECT(keys_addr == stage_addr);
+
+  // the fund's transaction key is fixed by the height, and different for every height
+  crypto::secret_key fr1, fr2;
+  crypto::public_key fR1, fR2, fR3;
+  get_dev_fund_tx_key(100, fr1, fR1);
+  get_dev_fund_tx_key(100, fr2, fR2);
+  EXPECT(fR1 == fR2);
+  get_dev_fund_tx_key(101, fr2, fR3);
+  EXPECT(!(fR1 == fR3));
+
+  // a coinbase at height 100: miner output first (paid with the coinbase's random key),
+  // fund output last with 5% of the subsidy (paid with R_f, the second tx public key)
+  keypair miner_spend = keypair::generate(hw::get_device("default"));
+  keypair miner_view = keypair::generate(hw::get_device("default"));
+  account_public_address miner{miner_spend.pub, miner_view.pub};
+  transaction tx, tx2;
+  const uint64_t fee = 123456789;
+  EXPECT(construct_miner_tx(100, 0, FULL, 0, fee, miner, tx, blobdata(), 1, 16, MAINNET));
+  uint64_t subsidy = 0;
+  EXPECT(get_block_reward_at_height(0, 0, FULL, subsidy, 16, 100));
+  EXPECT_EQ(tx.vout.size(), size_t(2));
+  EXPECT_EQ(tx.vout[1].amount, get_dev_fund_share(subsidy, 100));
+  EXPECT_EQ(tx.vout[0].amount, subsidy - get_dev_fund_share(subsidy, 100) + fee);
+  EXPECT(get_additional_tx_pub_keys_from_extra(tx).empty());
+  const crypto::public_key main_pub = get_tx_pub_key_from_extra(tx, 0);
+  EXPECT(get_tx_pub_key_from_extra(tx, 1) == fR1);              // R_f follows the miner's key
+  EXPECT(!(main_pub == fR1));
+  crypto::public_key k1, k2, out_key;
+  crypto::view_tag t1, t2;
+  EXPECT(get_dev_fund_output(MAINNET, 100, 1, k1, t1));
+  EXPECT(get_output_public_key(tx.vout[1], out_key));
+  EXPECT(out_key == k1);
+  EXPECT(get_output_view_tag(tx.vout[1]) && *get_output_view_tag(tx.vout[1]) == t1);
+  EXPECT(get_dev_fund_output(MAINNET, 100, 0, k2, t2));
+  EXPECT(!(k1 == k2));                                           // index matters
+  // the fund output for a height is the same in every coinbase (nobody can choose it),
+  // and different at every height (no two blocks share a fund key)
+  EXPECT(construct_miner_tx(100, 0, FULL, 0, fee, miner, tx2, blobdata(), 1, 16, MAINNET));
+  crypto::public_key out_key2;
+  EXPECT(get_output_public_key(tx2.vout[1], out_key2));
+  EXPECT(out_key == out_key2);
+  EXPECT(get_dev_fund_output(MAINNET, 101, 1, k2, t2));
+  EXPECT(!(k1 == k2));
+
+  // the fund's wallet finds its output with the view key through R_f (wallet scanning maths)
+  crypto::key_derivation d;
+  crypto::public_key found;
+  EXPECT(crypto::generate_key_derivation(fR1, fund_view, d));
+  EXPECT(crypto::derive_public_key(d, 1, main_addr.m_spend_public_key, found));
+  EXPECT(found == out_key);
+  // ...and the miner's wallet still finds the miner output through the main key
+  EXPECT(crypto::generate_key_derivation(main_pub, miner_view.sec, d));
+  EXPECT(crypto::derive_public_key(d, 0, miner.m_spend_public_key, found));
+  EXPECT(get_output_public_key(tx.vout[0], out_key));
+  EXPECT(found == out_key);
+  // ...and the miner's view key does not see the fund output
+  EXPECT(crypto::derive_public_key(d, 1, miner.m_spend_public_key, found));
+  EXPECT(get_output_public_key(tx.vout[1], out_key));
+  EXPECT(!(found == out_key));
+
+  // genesis-style coinbase (height 0) has no fund output
+  transaction g;
+  EXPECT(construct_miner_tx(0, 0, 0, 0, 0, miner, g, blobdata(), 1, 1, MAINNET));
+  EXPECT_EQ(g.vout.size(), size_t(1));
+}
+
 static void test_hardforks_and_identity()
 {
   EXPECT_EQ(num_mainnet_hard_forks, (size_t)2);
@@ -228,6 +326,7 @@ int main()
   test_slow_start();
   test_lwma();
   test_alt_difficulty_floor();
+  test_dev_fund();
   test_hardforks_and_identity();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;

@@ -13887,6 +13887,11 @@ crypto::public_key wallet2::get_tx_pub_key_from_received_outs(const tools::walle
     return tx_pub_key;
   }
 
+  // Opacra: coinbases carry two public keys (the miner's and the development fund's).
+  // The key that found this output was recorded while scanning; use it.
+  if (find_tx_extra_field_by_type(tx_extra_fields, pub_key_field, td.m_pk_index))
+    return pub_key_field.pub_key;
+
   // more than one, loop and search
   const cryptonote::account_keys& keys = m_account.get_keys();
   size_t pk_index = 0;
@@ -13896,7 +13901,8 @@ crypto::public_key wallet2::get_tx_pub_key_from_received_outs(const tools::walle
     const crypto::public_key tx_pub_key = pub_key_field.pub_key;
     crypto::key_derivation derivation;
     bool r = hwdev.generate_key_derivation(tx_pub_key, keys.m_view_secret_key, derivation);
-    THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, "Failed to generate key derivation");
+    if (!r)
+      continue;  // Opacra: skip a malformed key instead of aborting (e.g. key image export)
 
     for (size_t i = 0; i < td.m_tx.vout.size(); ++i)
     {

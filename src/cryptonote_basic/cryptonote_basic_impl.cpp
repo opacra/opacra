@@ -129,9 +129,79 @@ namespace cryptonote {
     return true;
   }
   //-----------------------------------------------------------------------------------------------
+  uint64_t get_dev_fund_share(uint64_t block_subsidy, uint64_t height)
+  {
+    static_assert(OPACRA_DEV_FUND_PERCENT < 100, "dev fund share must be below 100%");
+    if (height == 0)
+      return 0;
+    return (uint64_t)((unsigned __int128)block_subsidy * OPACRA_DEV_FUND_PERCENT / 100);
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool get_dev_fund_keys(network_type nettype, account_public_address &address, crypto::secret_key &view_secret_key)
+  {
+    const network_type net = nettype == FAKECHAIN ? MAINNET : nettype;
+    const std::string *addr_str = nullptr, *view_str = nullptr;
+    switch (net)
+    {
+      case MAINNET: addr_str = &::config::DEV_FUND_ADDRESS; view_str = &::config::DEV_FUND_VIEW_KEY; break;
+      case TESTNET: addr_str = &::config::testnet::DEV_FUND_ADDRESS; view_str = &::config::testnet::DEV_FUND_VIEW_KEY; break;
+      case STAGENET: addr_str = &::config::stagenet::DEV_FUND_ADDRESS; view_str = &::config::stagenet::DEV_FUND_VIEW_KEY; break;
+      default: return false;
+    }
+    address_parse_info info;
+    if (!get_account_address_from_str(info, net, *addr_str) || info.is_subaddress || info.has_payment_id)
+    {
+      MERROR("Invalid development fund address configured for this network: " << *addr_str);
+      return false;
+    }
+    crypto::public_key view_public_key;
+    if (!epee::string_tools::hex_to_pod(*view_str, view_secret_key)  // secret_key_to_public_key rejects non-reduced scalars
+        || !crypto::secret_key_to_public_key(view_secret_key, view_public_key) || view_public_key != info.address.m_view_public_key)
+    {
+      MERROR("The development fund view key does not match the fund address for this network");
+      return false;
+    }
+    address = info.address;
+    return true;
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool get_dev_fund_address(network_type nettype, account_public_address &address)
+  {
+    crypto::secret_key view_secret_key;
+    return get_dev_fund_keys(nettype, address, view_secret_key);
+  }
+  //-----------------------------------------------------------------------------------------------
+  void get_dev_fund_tx_key(uint64_t height, crypto::secret_key &tx_key, crypto::public_key &tx_pub_key)
+  {
+    static const char domain[] = "OpacraDevFund";
+    char buf[sizeof(domain) - 1 + 8];
+    memcpy(buf, domain, sizeof(domain) - 1);
+    const uint64_t h = SWAP64LE(height);
+    memcpy(buf + sizeof(domain) - 1, &h, 8);
+    crypto::hash_to_scalar(buf, sizeof(buf), tx_key);
+    crypto::secret_key_to_public_key(tx_key, tx_pub_key);
+  }
+  //-----------------------------------------------------------------------------------------------
+  bool get_dev_fund_output(network_type nettype, uint64_t height, size_t output_index, crypto::public_key &output_key, crypto::view_tag &view_tag)
+  {
+    account_public_address fund;
+    if (!get_dev_fund_address(nettype, fund))
+      return false;
+    crypto::secret_key r;
+    crypto::public_key R;
+    get_dev_fund_tx_key(height, r, R);
+    crypto::key_derivation derivation;
+    if (!crypto::generate_key_derivation(fund.m_view_public_key, r, derivation))
+      return false;
+    if (!crypto::derive_public_key(derivation, output_index, fund.m_spend_public_key, output_key))
+      return false;
+    crypto::derive_view_tag(derivation, output_index, view_tag);
+    return true;
+  }
+  //-----------------------------------------------------------------------------------------------
   uint64_t apply_slow_start(uint64_t reward, uint64_t height)
   {
-    // Opacra fair launch: linear ramp from 0 to the full reward over SLOW_START_BLOCKS.
+    // Opacra launch slow start: linear ramp from 0 to the full reward over SLOW_START_BLOCKS.
     // The genesis block (height 0) is exempt; its output is unspendable anyway.
     if (height == 0 || height >= SLOW_START_BLOCKS)
       return reward;

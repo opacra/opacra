@@ -110,7 +110,7 @@ namespace cryptonote
     LOG_PRINT_L2("destinations include " << num_stdaddresses << " standard addresses and " << num_subaddresses << " subaddresses");
   }
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version) {
+  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, network_type nettype) {
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -138,6 +138,9 @@ namespace cryptonote
     LOG_PRINT_L1("Creating block template: reward " << block_reward <<
       ", fee " << fee);
 #endif
+    // Opacra: the development fund's share of the subsidy (not of fees)
+    const uint64_t dev_fund = get_dev_fund_share(block_reward, height);
+    block_reward -= dev_fund;
     block_reward += fee;
 
     // from hard fork 2, we cut out the low significant digits. This makes the tx smaller, and
@@ -200,6 +203,26 @@ namespace cryptonote
     }
 
     CHECK_AND_ASSERT_MES(summary_amounts == block_reward, false, "Failed to construct miner tx, summary_amounts = " << summary_amounts << " not equal block_reward = " << block_reward);
+
+    // Opacra: development fund output, last. Its key comes from the fund's per-height
+    // transaction key R_f (see get_dev_fund_tx_key), which is appended to the extra field
+    // as a second transaction public key, after the nonce, so the miner's key, the nonce
+    // and pools' reserved_offset are laid out exactly as in Monero. The fund's wallet finds
+    // the output through R_f like any incoming payment; every node can check it.
+    if (dev_fund > 0)
+    {
+      CHECK_AND_ASSERT_MES(hard_fork_version >= HF_VERSION_VIEW_TAGS, false, "dev fund requires view tags (v" << (unsigned)HF_VERSION_VIEW_TAGS << "+)");
+      crypto::public_key fund_out_key;
+      crypto::view_tag fund_view_tag;
+      CHECK_AND_ASSERT_MES(get_dev_fund_output(nettype, height, tx.vout.size(), fund_out_key, fund_view_tag), false, "failed to derive the development fund output");
+      tx_out out;
+      cryptonote::set_tx_out(dev_fund, fund_out_key, true, fund_view_tag, out);
+      tx.vout.push_back(out);
+      crypto::secret_key fund_tx_key;
+      crypto::public_key fund_tx_pub;
+      get_dev_fund_tx_key(height, fund_tx_key, fund_tx_pub);
+      add_tx_pub_key_to_extra(tx.extra, fund_tx_pub);
+    }
 
     if (hard_fork_version >= 4)
       tx.version = 2;

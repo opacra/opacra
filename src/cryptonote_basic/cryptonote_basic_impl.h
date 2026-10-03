@@ -84,6 +84,22 @@ namespace cryptonote {
   // Consensus code (coinbase construction and validation) must use this function.
   uint64_t apply_slow_start(uint64_t reward, uint64_t height);
   bool get_block_reward_at_height(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height);
+
+  // Opacra development fund (see OPACRA_DEV_FUND_PERCENT in cryptonote_config.h).
+  // Share of a block's subsidy (not fees) owed to the fund; 0 for the genesis block.
+  uint64_t get_dev_fund_share(uint64_t block_subsidy, uint64_t height);
+  // The fund's standard address and its public view secret key for a network (FAKECHAIN
+  // uses mainnet's). False if either is malformed or they don't belong together.
+  bool get_dev_fund_keys(network_type nettype, account_public_address &address, crypto::secret_key &view_secret_key);
+  bool get_dev_fund_address(network_type nettype, account_public_address &address);
+  // The fund output's own transaction key for a block: r_f = Hs("OpacraDevFund" || height),
+  // R_f = r_f*G. It goes into the coinbase as a second transaction public key (after the
+  // extra nonce), so the fund's one-time key is unique per height and fixed by consensus:
+  // no miner can choose it, reuse it or burn it.
+  void get_dev_fund_tx_key(uint64_t height, crypto::secret_key &tx_key, crypto::public_key &tx_pub_key);
+  // The one-time key and view tag the fund's output must have at coinbase output index
+  // `output_index` in the block at `height`.
+  bool get_dev_fund_output(network_type nettype, uint64_t height, size_t output_index, crypto::public_key &output_key, crypto::view_tag &view_tag);
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl);
   uint8_t get_account_integrated_address_checksum(const public_integrated_address_outer_blob& bl);
 

@@ -9,7 +9,7 @@ End-to-end functional test of an Opacra network on one machine.
   4. inspects the on-chain transactions (RingCT type, 16-member rings, view tags)
   5. exercises selective disclosure: tx key, payment proof and reserve proof
   6. forces a chain split and checks that the network re-converges (reorg)
-  7. replays every block: recomputes difficulty (LWMA-1) and reward (emission +
+  7. replays every block: recomputes difficulty (LWMA-1), the development fund payment, and reward (emission +
      slow start + fees) independently in Python and compares with the chain
 
 Writes a JSON report to $DATA/report.json.   Needs a built tree (build/release/bin).
@@ -17,6 +17,7 @@ Writes a JSON report to $DATA/report.json.   Needs a built tree (build/release/b
 import json
 import os
 import pathlib
+import re
 import statistics as st
 import subprocess
 import sys
@@ -112,14 +113,23 @@ def block_stats(headers):
     }
 
 
+def dev_fund_keys():
+    """Mainnet development fund address and its public view key, from cryptonote_config.h."""
+    cfg = (HERE.parent.parent / "src" / "cryptonote_config.h").read_text()
+    addr = re.search(r'DEV_FUND_ADDRESS = "([^"]+)"', cfg).group(1)
+    view = re.search(r'DEV_FUND_VIEW_KEY = "([0-9a-f]{64})"', cfg).group(1)
+    return addr, view
+
+
 def verify_chain(d):
-    """Recompute difficulty and reward for every block from genesis."""
+    """Recompute difficulty, reward and development fund payment for every block from genesis."""
     top = d.height() - 1
     hs = d.headers(0, top)
     ts, cds = [], []
     generated = 0
     mismatches = []
     fee_blocks = 0
+    fund_total = 0
     for h in hs:
         height = h["height"]
         exp_diff = tp.lwma_next_difficulty(ts, cds)
@@ -135,11 +145,19 @@ def verify_chain(d):
                 fees += json.loads(t["as_json"])["rct_signatures"]["txnFee"]
         if h["reward"] != base + fees:
             mismatches.append(("reward", height, base + fees, h["reward"]))
+        if height > 0:
+            # the last coinbase output pays the fund 5% of the subsidy; the miner gets the rest + fees
+            blk = d.rpc("get_block", height=height)
+            vout = json.loads(blk["json"])["miner_tx"]["vout"]
+            fund = tp.dev_fund_share(base, height)
+            fund_total += fund
+            if len(vout) < 2 or vout[-1]["amount"] != fund or sum(o["amount"] for o in vout[:-1]) != base - fund + fees:
+                mismatches.append(("devfund", height, fund, [o["amount"] for o in vout]))
         generated = min(generated + base, tp.MONEY_SUPPLY)
         if height > 0:
             ts.append(h["timestamp"])
             cds.append(h["cumulative_difficulty"])
-    return len(hs), fee_blocks, generated, mismatches
+    return len(hs), fee_blocks, generated, mismatches, fund_total
 
 
 def main():
@@ -300,11 +318,28 @@ def main():
     report["reorg"] = {"split_height": split_height, "converged_heights": heights}
 
     # --- independent consensus replay
-    n_blocks, fee_blocks, generated, mism = verify_chain(nodes[1])
+    n_blocks, fee_blocks, generated, mism, fund_total = verify_chain(nodes[1])
     report["replay"] = {"blocks": n_blocks, "blocks_with_fees": fee_blocks, "generated_atomic": generated,
                         "mismatches": mism[:20]}
     check(f"replayed {n_blocks} blocks: every difficulty matches LWMA-1 reference", not [m for m in mism if m[0] == "difficulty"])
     check(f"replayed {n_blocks} blocks: every reward matches emission+slow-start+fees", not [m for m in mism if m[0] == "reward"])
+    check(f"replayed {n_blocks} blocks: every coinbase pays the development fund 5% of the subsidy",
+          not [m for m in mism if m[0] == "devfund"], f"fund total {fund_total / ATOMIC:.6f} OPCA")
+
+    # --- development fund audit: a view-only wallet built from the public view key
+    fund_addr, fund_view = dev_fund_keys()
+    pf, wf = start_wallet_rpc(3, daemon_idx=1)
+    procs.append(pf)
+    if (DATA / "wallets3" / "fund-audit.keys").exists():
+        wf.rpc("open_wallet", filename="fund-audit", password="")
+    else:
+        wf.rpc("generate_from_keys", filename="fund-audit", address=fund_addr, viewkey=fund_view, password="",
+               restore_height=0)
+    wf.rpc("refresh")
+    fund_bal = wf.rpc("get_balance")["balance"]
+    report["dev_fund"] = {"address": fund_addr, "expected_atomic": fund_total, "view_only_balance_atomic": fund_bal}
+    check("anyone can audit the development fund with its public view key",
+          fund_bal == fund_total, f"view-only wallet sees {fund_bal / ATOMIC:.6f} OPCA, chain owes {fund_total / ATOMIC:.6f}")
 
     hs = nodes[1].headers(1, nodes[1].height() - 1)
     report["final_stats"] = block_stats(hs)

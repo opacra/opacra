@@ -313,6 +313,16 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
   m_db = db;
 
   m_nettype = test_options != NULL ? FAKECHAIN : nettype;
+  {
+    // Opacra: every block from height 1 pays the development fund; refuse to start
+    // with a missing or malformed fund address rather than reject every block later.
+    account_public_address dev_fund_address;
+    if (!get_dev_fund_address(m_nettype, dev_fund_address))
+    {
+      LOG_ERROR("The development fund address or view key for this network is invalid");
+      return false;
+    }
+  }
   m_offline = offline;
   m_fixed_difficulty = fixed_difficulty;
   if (m_hardfork == nullptr)
@@ -1372,6 +1382,56 @@ bool Blockchain::validate_miner_transaction(const block& b, uint64_t height, siz
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
     return false;
   }
+  // Opacra: the last coinbase output must pay the development fund exactly its share of
+  // the subsidy, to the one-time key fixed by the block height (see get_dev_fund_tx_key),
+  // and the coinbase must carry the fund's transaction public key R_f so the fund's
+  // wallet can find the output.
+  const uint64_t dev_fund = get_dev_fund_share(base_reward, height);
+  if (dev_fund > 0)
+  {
+    const transaction &mtx = b.miner_tx;
+    if (mtx.vout.size() < 2)
+    {
+      MERROR_VER("coinbase transaction has no development fund output");
+      return false;
+    }
+    const size_t fund_index = mtx.vout.size() - 1;
+    crypto::public_key expected_key;
+    crypto::view_tag expected_tag;
+    if (!get_dev_fund_output(m_nettype, height, fund_index, expected_key, expected_tag))
+    {
+      MERROR_VER("failed to derive the development fund output");
+      return false;
+    }
+    const tx_out &fund_out = mtx.vout[fund_index];
+    crypto::public_key fund_key;
+    const boost::optional<crypto::view_tag> fund_tag = get_output_view_tag(fund_out);
+    if (fund_out.amount != dev_fund || !get_output_public_key(fund_out, fund_key) || fund_key != expected_key
+        || !fund_tag || *fund_tag != expected_tag)
+    {
+      MERROR_VER("coinbase transaction does not pay the development fund correctly (expected " << print_money(dev_fund) << " to the fund at output " << fund_index << ")");
+      return false;
+    }
+    // The coinbase's transaction public keys must be exactly [miner's key, R_f], both valid
+    // points: wallets walk every key when exporting key images or signing (multisig, cold
+    // signing), so a junk extra key could otherwise jam the fund's wallet.
+    crypto::secret_key fund_tx_key;
+    crypto::public_key fund_tx_pub;
+    get_dev_fund_tx_key(height, fund_tx_key, fund_tx_pub);
+    std::vector<tx_extra_field> extra_fields;
+    parse_tx_extra(mtx.extra, extra_fields);
+    std::vector<crypto::public_key> tx_pub_keys;
+    for (const tx_extra_field &field: extra_fields)
+      if (field.type() == typeid(tx_extra_pub_key))
+        tx_pub_keys.push_back(boost::get<tx_extra_pub_key>(field).pub_key);
+    if (tx_pub_keys.size() != 2 || tx_pub_keys[1] != fund_tx_pub || tx_pub_keys[0] == fund_tx_pub
+        || !crypto::check_key(tx_pub_keys[0]))
+    {
+      MERROR_VER("coinbase transaction public keys must be exactly the miner's key followed by the development fund's");
+      return false;
+    }
+  }
+
   if(base_reward + fee < money_in_use)
   {
     MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use) << "). Block reward is " << print_money(base_reward + fee) << "(" << print_money(base_reward) << "+" << print_money(fee) << "), cumulative_block_weight " << cumulative_block_weight);
@@ -1694,7 +1754,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = b.major_version;
   size_t max_outs = hf_version >= 4 ? 1 : 11;
-  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version);
+  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype);
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
@@ -1703,7 +1763,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
 #endif
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
-    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version);
+    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype);
 
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
     size_t coinbase_weight = get_transaction_weight(b.miner_tx);
@@ -1747,6 +1807,13 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
         ", cumulative weight " << cumulative_weight << " is now good");
 #endif
 
+    // Opacra: report what the miner receives (the coinbase minus the development fund)
+    expected_reward = get_outs_money_amount(b.miner_tx);
+    {
+      const uint64_t dev_fund = get_dev_fund_share(expected_reward - fee, height);
+      if (dev_fund > 0 && b.miner_tx.vout.size() >= 2 && b.miner_tx.vout.back().amount <= expected_reward)
+        expected_reward -= b.miner_tx.vout.back().amount;
+    }
     if (!from_block)
       cache_block_template(b, miner_address, ex_nonce, diffic, height, expected_reward, seed_height, seed_hash, pool_cookie);
     return true;

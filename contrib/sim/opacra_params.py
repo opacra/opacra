@@ -61,6 +61,14 @@ def slow_start(reward, height):
     return reward * height // SLOW_START
 
 
+DEV_FUND_PERCENT = 5
+
+
+def dev_fund_share(subsidy, height):
+    """Development fund's share of a block's subsidy (not fees); none for genesis."""
+    return 0 if height == 0 else subsidy * DEV_FUND_PERCENT // 100
+
+
 def block_reward(already_generated, height):
     """Reward for an empty-ish block (no size penalty) at `height`."""
     return slow_start(base_reward(already_generated), height)

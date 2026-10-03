@@ -19,3 +19,17 @@ in daemon (solo) mode with no built-in miner running:
 
 Over two runs XMRig added 18 blocks (heights 128 to 145); all three nodes accepted them and share the same tip.
 `--coin monero` only selects the block format and algorithm; Opacra uses both unchanged.
+
+## With the development fund (3 October 2026)
+
+Since every coinbase has a second output for the 5% development fund, unmodified XMRig
+6.26.0 refuses the node's block templates in solo (`--daemon`) mode:
+
+```
+net      127.0.0.1:33101 job error: "Invalid block template received from daemon."
+```
+
+With `contrib/xmrig/opacra-solo-mining.patch` (it skips the extra coinbase outputs when
+parsing the template) XMRig mined against a regtest node and every block it found was
+accepted, for example block 5 with outputs `[561749991, 29565788]`: the second is exactly
+5% of the subsidy. Pool mining is unaffected because the pool builds the job.

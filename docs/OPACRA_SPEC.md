@@ -11,6 +11,7 @@ Tor/I2P support, LMDB storage, pruning, RPC APIs (method names unchanged).
 |---|---|---|
 | Block target | 30 s (all block versions) | `DIFFICULTY_TARGET_V1/V2`, `src/cryptonote_config.h` |
 | Blocks per day / year | 2,880 / 1,051,920 | |
+| Development fund | 5% of each block's subsidy from block 1, forever; fees go to miners | `OPACRA_DEV_FUND_PERCENT`, `DEV_FUND_ADDRESS` |
 | Proof of work | RandomX (`rx/0`), seed epoch 2048 blocks, lag 64 | unchanged |
 | Difficulty algorithm | LWMA-1, N = 60 (30 min) | `src/cryptonote_basic/difficulty.cpp` |
 | Startup difficulty | block 1: 1; blocks 2–12: 10,000 (`DIFFICULTY_STARTUP_GUESS`); LWMA from block 13 with the blocks available | |
@@ -65,7 +66,22 @@ The Monero block-size penalty is then applied as usual, and fees are added.
   Rewards switch to the tail at height ≈16,219,343, when the main-curve reward falls
   below 0.05 OPCA; the total itself reaches 10M at height ≈20,413,646 (~19.4 years).
   Miners and pools (`get_miner_data`, ZMQ `miner_data`) see the total clamped to 10M.
-- **No premine, no developer fee, no ICO.**
+- **No premine, no ICO.**
+- **Development fund: 5% of every block's subsidy** (newly created coins; transaction fees
+  go entirely to the miner), from block 1 with no end date, including the tail (0.0025 OPCA
+  a block). Paid as the last coinbase output (index n−1 of n outputs) to `DEV_FUND_ADDRESS`
+  (A, B) with a per-height transaction key r_f = Hs("OpacraDevFund" ‖ height as 8-byte
+  little-endian), R_f = r_f·G: the output key must be Hs(8·r_f·A ‖ n−1)·G + B with the
+  matching view tag, and R_f must appear in the coinbase's extra field as a transaction
+  public key (it is appended after the extra nonce, so the miner's key and pools'
+  `reserved_offset` are laid out as in Monero). The coinbase's transaction public keys must
+  be exactly [miner's key, R_f], both valid points. Blocks that don't follow this exactly
+  are rejected. Because the key is fixed by the height, no miner can choose, reuse or burn the
+  fund's output, and no two blocks share one. The fund's secret view key is published
+  (`DEV_FUND_VIEW_KEY`) so anyone can audit every payment it receives (its own spends are
+  visible through their change outputs, which is intended); the miner's output keeps its
+  random key and privacy. About 110,000 OPCA in year 1 and 500,000 OPCA from the main curve
+  in total.
 
 The table is produced by `contrib/sim/opacra_params.py` (bit-exact integer model).
 
@@ -156,24 +172,33 @@ Consensus:
 14. The generated-coins total is no longer capped at `MONEY_SUPPLY` (it now means the main
     curve, not 2^64−1); consensus is unchanged because rewards treat any total at or above
     10M as tail-only. Side-chain totals count only newly created coins, not fees.
+15. Development fund (`cryptonote_basic_impl.cpp` `get_dev_fund_share` / `get_dev_fund_output`,
+    `cryptonote_tx_utils.cpp` `construct_miner_tx`, `blockchain.cpp`
+    `validate_miner_transaction`): from height 1 the coinbase's last output pays 5% of the
+    subsidy to the fund with the per-height key R_f, appended to the extra field after the
+    nonce (pools' `reserved_offset` still points at the extra nonce). The node refuses to
+    start if the fund address is not a standard address or the published view key doesn't
+    belong to it.
+    `get_block_template` reports the miner's share as `expected_reward`; block headers'
+    `reward` is the whole coinbase (miner + fund).
 
 Network and wallet:
 
-15. `src/coin_network.h` (new): seed nodes, DNS seeds, Tor/I2P seeds, DNS checkpoint,
+16. `src/coin_network.h` (new): seed nodes, DNS seeds, Tor/I2P seeds, DNS checkpoint,
    update and blocklist domains, download URLs, DNSSEC probe host. All empty or
    placeholders; nothing points at Monero infrastructure.
-16. `src/p2p/net_node.h/.inl`, `src/checkpoints/checkpoints.cpp`, `src/common/updates.cpp`,
+17. `src/p2p/net_node.h/.inl`, `src/checkpoints/checkpoints.cpp`, `src/common/updates.cpp`,
     `src/common/dns_utils.cpp`: read the lists above.
-17. `src/wallet/wallet2.cpp`: hard-fork checks look versions up by value (the table
+18. `src/wallet/wallet2.cpp`: hard-fork checks look versions up by value (the table
     skips versions 2–15); height estimate without Monero's rollback offsets; "recent
     output" window computed from the block time.
-18. `src/simplewallet/simplewallet.cpp/.h`: `donate` uses `OPACRA_DONATION_ADDR`
+19. `src/simplewallet/simplewallet.cpp/.h`: `donate` uses `OPACRA_DONATION_ADDR`
     (empty = disabled) instead of the Monero donation address.
-19. `src/cryptonote_core/cryptonote_core.cpp`: sync batch size no longer keyed to Monero's v4
+20. `src/cryptonote_core/cryptonote_core.cpp`: sync batch size no longer keyed to Monero's v4
     height; the block-rate monitor reads enough blocks for 30 s targets and computes its
     Poisson terms in log space (they overflowed to NaN above ~170 blocks). The weekly
     difficulty recheck covers the last 20,160 blocks instead of the whole chain.
-20. Wallets: `ignore-outputs-above` defaults to 2^64−1 (Monero used `MONEY_SUPPLY`, which
+21. Wallets: `ignore-outputs-above` defaults to 2^64−1 (Monero used `MONEY_SUPPLY`, which
     is no longer 2^64−1); OpenAlias records use `oa1:opca`.
 
 Branding (no behaviour change): string literals and binary names via

@@ -7,6 +7,17 @@ power-efficient than desktop CPUs, so CPU mining stays viable.
 
 - Block time: 30 seconds. Block reward: 2.384186 OPCA at launch, ramping up linearly
   from zero over the first 7 days (20,160 blocks).
+- Miners receive 95% of each block's newly created coins plus all transaction fees; 5% goes
+  to the development fund as the last coinbase output. The node builds this into every
+  block template, and a block without the fund payment is rejected.
+  - `get_block_template` reports the miner's share as `expected_reward`. A block header's
+    `reward` is the whole coinbase (miner + fund): **pool software must credit miners from
+    `expected_reward` or the coinbase's first output, not from the header reward**, or it
+    will pay out 5% of the subsidy it never received.
+  - XMRig works unchanged against pools. For solo mining against your own node (XMRig's
+    `--daemon` mode), XMRig 6.26 rejects coinbases with more than one output; build it with
+    `contrib/xmrig/opacra-solo-mining.patch` (tested: blocks accepted with the fund paid).
+  - Pools that build their own coinbase (p2pool-style) must add the fund output themselves.
 - Mined coins unlock after 60 blocks (about 30 minutes).
 - RandomX needs ~2.3 GB of RAM per miner process for full speed ("fast mode").
 
@@ -34,7 +45,8 @@ Solo, against your own node (RPC on 29961):
 ```
 
 `--coin monero` tells XMRig the block format; Opacra uses the same format and algorithm.
-Tested with XMRig 6.26.0 (see docs/XMRIG_TEST.md).
+Tested with XMRig 6.26.0 (see docs/XMRIG_TEST.md). Solo mining needs the small patch in
+`contrib/xmrig/` because of the development fund output; pool mining doesn't.
 
 Pool:
 

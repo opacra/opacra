@@ -70,10 +70,19 @@
 #define MONEY_SUPPLY                                    ((uint64_t)10000000 * (uint64_t)1000000000000) // 10M OPCA in atomic units
 #define EMISSION_SPEED_FACTOR_PER_BLOCK                 (22)
 #define TAIL_EMISSION_REWARD                            ((uint64_t)50000000000) // 0.05 OPCA per block (~52,600 OPCA/year)
-// Opacra fair launch: block rewards ramp up linearly from 0 over the first
+// Opacra launch slow start: block rewards ramp up linearly from 0 over the first
 // SLOW_START_BLOCKS blocks (~7 days), so nobody can capture a large share of
 // coins before the wider community has joined mining.
 #define SLOW_START_BLOCKS                               ((uint64_t)20160)
+
+// Opacra development fund: 5% of every block subsidy (the newly created coins, not
+// transaction fees), from block 1 onwards with no end date, including tail emission.
+// Paid as the last coinbase output to config::DEV_FUND_ADDRESS (per network) with a
+// per-height key R_f carried as the coinbase's second transaction public key (see
+// get_dev_fund_tx_key), so every node can check it and nobody can choose or reuse it.
+// The fund's view key is published (config::DEV_FUND_VIEW_KEY) so anyone can audit the
+// fund's income. Miners receive the other 95% plus all fees.
+#define OPACRA_DEV_FUND_PERCENT                         5
 
 // Opacra: block-size rules scaled to 30 s blocks so they match Monero per unit of real
 // time (Monero: 300 kB per 2-minute block, 100-block and 100,000-block median windows).
@@ -282,6 +291,14 @@ namespace config
   // "Opacra mainnet genesis | 2026-10-02 | Private by default, auditable by choice."
   std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b145029f76646388993c91ca84209b815bff6467bc631500f3a86c2aa332572de9d94d7101aa0a93586b60454f425d180db01995ed2e688be793cbef62f08e324821400609024e4f7061637261206d61696e6e65742067656e65736973207c20323032362d31302d3032207c20507269766174652062792064656661756c742c20617564697461626c652062792063686f6963652e";
   uint32_t const GENESIS_NONCE = 10000;
+  // Development fund: receives OPACRA_DEV_FUND_PERCENT of every block subsidy. Must be a
+  // standard address. PLACEHOLDER (development identity): replace with the project's
+  // offline fund wallet before the public testnet / mainnet.
+  std::string const DEV_FUND_ADDRESS = "Pa2TMaoVUYTYLcVxZC6dx9MaRwEKV7J35MnqGbdNR73fPaaY9Lb93WSHnPaJkRWpP61dP9CJkDDte4nrUPh7EZgC1F2J9RMEnt";
+  // The fund's secret view key is public on purpose: anyone can import it into a
+  // view-only wallet to audit every payment the fund receives. Nodes check at startup
+  // that it belongs to DEV_FUND_ADDRESS.
+  std::string const DEV_FUND_VIEW_KEY = "b8b6a46509df7666faad76401f0844c0db01f9078757e1790a98810300066701";
 
   // Hash domain separators
   const char HASH_KEY_BULLETPROOF_EXPONENT[] = "bulletproof";
@@ -325,6 +342,14 @@ namespace config
       } };
     std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b145029f2f9831645742126ae225f9660bf52079f95792919a2a6a8bd9acb57eaf6f514601c3f0f15ec3eb910212e78b99ff0a0a701fb9d578e7942ee4f30956786de8604902234f706163726120746573746e65742067656e65736973207c20323032362d31302d3032";
     uint32_t const GENESIS_NONCE = 10001;
+    // Development fund: receives OPACRA_DEV_FUND_PERCENT of every block subsidy. Must be a
+    // standard address. PLACEHOLDER (development identity): replace with the project's
+    // offline fund wallet before the public testnet / mainnet.
+    std::string const DEV_FUND_ADDRESS = "Te16o7GFUJbXASXhxs9usWXfC9M12LNz66TdpJjsj5nYZ13DvBnC4bbMEWBQH6r11EYWZYV5Z1khf3cNWctgFUaR1EV3gCWvv";
+    // The fund's secret view key is public on purpose: anyone can import it into a
+    // view-only wallet to audit every payment the fund receives. Nodes check at startup
+    // that it belongs to DEV_FUND_ADDRESS.
+    std::string const DEV_FUND_VIEW_KEY = "9c10f63b43365ed3d8f1cc9e69df898326e0cdb4ba305a1d41384448937ab005";
   }
 
   namespace stagenet
@@ -340,6 +365,14 @@ namespace config
       } };
     std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b14502f7fcb1005aa2e46c3e4626b211d76d3cf0d12ff3dafdbc7b4c7c4506c524c4294701332eb62e164cd880959de076bf659ba3b9cb01e6a941ecde1a8a7d21fe178c8f02244f70616372612073746167656e65742067656e65736973207c20323032362d31302d3032";
     uint32_t const GENESIS_NONCE = 10002;
+    // Development fund: receives OPACRA_DEV_FUND_PERCENT of every block subsidy. Must be a
+    // standard address. PLACEHOLDER (development identity): replace with the project's
+    // offline fund wallet before the public testnet / mainnet.
+    std::string const DEV_FUND_ADDRESS = "Sa1CJsHUjXFaNSytLRr2h1U3wRxcZi36eimPkSUJ87AuaAEwhhg9UoLh9dYcHczjj97HNVLEGCcwdQ2drVLvk25X7BnkNKWE8F";
+    // The fund's secret view key is public on purpose: anyone can import it into a
+    // view-only wallet to audit every payment the fund receives. Nodes check at startup
+    // that it belongs to DEV_FUND_ADDRESS.
+    std::string const DEV_FUND_VIEW_KEY = "1acfcf08c41616dcf9a14247edf520a4e16430ed4525f544476f2e711bd7600f";
   }
 }
 

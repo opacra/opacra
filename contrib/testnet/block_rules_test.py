@@ -10,6 +10,9 @@
   4. A node whose clock is 5 minutes slow does not accept a peer's new blocks
      (too far in the future for it) but does not ban that honest peer either, and
      syncs from it once its clock is fixed.
+  5. Every block pays the development fund exactly 5% of its subsidy as the last coinbase
+     output: blocks that short the fund, change its output key or view tag, or drop it
+     are refused, and get_block_template reports the miner's share.
 
 Usage:  BIN=build/portable/bin python3 contrib/testnet/block_rules_test.py
 Needs gcc (builds the clock-offset shim for test 4). Ports 33000-33100 on 127.0.0.1.
@@ -103,8 +106,8 @@ def read_varint(b, i):
             return n, i
 
 
-def template(node, prev=None):
-    params = {"wallet_address": ADDR, "reserve_size": 8}
+def template(node, prev=None, reserve_size=8):
+    params = {"wallet_address": ADDR, "reserve_size": reserve_size}
     if prev:
         params["prev_block"] = prev
     return node.rpc("get_block_template", **params)
@@ -217,12 +220,131 @@ def test_slow_clock_no_ban(shim):
     stop(pb)
 
 
+# --------------------------------------------------------------------------- dev fund
+def parse_coinbase_outputs(blob_hex):
+    """Locate the coinbase outputs in a block blob: [(amount_start, amount_end, key_start), ...]."""
+    b = bytes.fromhex(blob_hex)
+    _, i = read_varint(b, 0)          # major
+    _, i = read_varint(b, i)          # minor
+    _, i = read_varint(b, i)          # timestamp
+    i += 32 + 4                       # prev id, nonce
+    _, i = read_varint(b, i)          # tx version
+    _, i = read_varint(b, i)          # unlock time
+    nin, i = read_varint(b, i)
+    assert nin == 1 and b[i] == 0xFF  # txin_gen
+    _, i = read_varint(b, i + 1)      # height
+    nout, i = read_varint(b, i)
+    outs = []
+    for _ in range(nout):
+        a0 = i
+        amount, i = read_varint(b, i)
+        assert b[i] == 0x03           # txout_to_tagged_key
+        outs.append((a0, i, i + 1, amount))
+        i += 1 + 32 + 1               # tag, key, view tag
+    return b, outs
+
+
+def extra_pubkey_offsets(b, outs):
+    """Byte offsets of every transaction public key (tag 0x01) in the coinbase extra field."""
+    _, _, kstart, _ = outs[-1]
+    i = kstart + 32 + 1                 # end of the last output
+    size, i = read_varint(b, i)
+    end, found = i + size, []
+    while i < end:
+        tag = b[i]
+        i += 1
+        if tag == 0x01:
+            found.append(i)
+            i += 32
+        elif tag == 0x02:
+            n, i = read_varint(b, i)
+            i += n
+        else:                           # padding runs to the end
+            break
+    return found
+
+
+def rebuild(b, outs, amounts=None, key_flip=None, tag_flip=None):
+    """Return a modified blob: new output amounts, or one byte flipped in an output's key / view tag."""
+    b = bytearray(b)
+    for idx in sorted(range(len(outs)), reverse=True):     # back to front so offsets stay valid
+        a0, a1, kstart, _ = outs[idx]
+        if key_flip == idx:
+            b[kstart + 5] ^= 0x01
+        if tag_flip == idx:
+            b[kstart + 32] ^= 0x01
+        if amounts is not None:
+            b[a0:a1] = varint(amounts[idx])
+    return bytes(b).hex()
+
+
+def flip_fund_tx_pub(b, outs):
+    pks = extra_pubkey_offsets(b, outs)
+    assert len(pks) == 2, pks           # the miner's key, then the fund's per-height key
+    raw = bytearray(b)
+    raw[pks[1] + 7] ^= 0x01
+    return bytes(raw).hex()
+
+
+def insert_junk_tx_pub(b, outs):
+    """Insert an extra 'public key' field (32 bytes that are not a curve point) before R_f."""
+    pks = extra_pubkey_offsets(b, outs)
+    _, _, kstart, _ = outs[-1]
+    size_at = kstart + 32 + 1
+    size, data_at = read_varint(b, size_at)
+    insert_at = pks[1] - 1                    # before R_f's tag byte
+    junk = b"\x01" + b"\xff" * 32             # y >= p: never a valid point
+    new = b[:size_at] + varint(size + len(junk)) + b[data_at:insert_at] + junk + b[insert_at:]
+    return new.hex()
+
+
+def test_dev_fund_rules():
+    node, p = start_node("devfund", 33040, ["--offline"])
+    generate(node, 5)
+    t = template(node)
+    blob = with_timestamp(t["blocktemplate_blob"], int(time.time()), 7)
+    b, outs = parse_coinbase_outputs(blob)
+    amounts = [o[3] for o in outs]
+    check("fund: template coinbase has a miner output and a fund output", len(outs) == 2, amounts)
+    total = sum(amounts)
+    check("fund: fund output is 5% of the subsidy, miner gets the rest", len(amounts) == 2 and amounts[1] == total * 5 // 100,
+          f"{amounts[1] if len(amounts) > 1 else '-'} of {total}")
+    check("fund: get_block_template reports the miner's share", t.get("expected_reward") == amounts[0],
+          f"expected_reward {t.get('expected_reward')} vs miner output {amounts[0]}")
+    variants = [
+        ("fund: block paying the fund 1 atomic unit less (miner 1 more) is refused", rebuild(b, outs, [amounts[0] + 1, amounts[1] - 1]), False),
+        ("fund: block with a wrong fund output key is refused", rebuild(b, outs, key_flip=1), False),
+        ("fund: block with a wrong fund view tag is refused", rebuild(b, outs, tag_flip=1), False),
+        ("fund: block with all coins to the miner (fund output emptied) is refused", rebuild(b, outs, [total, 0]), False),
+        ("fund: block without the fund's transaction public key is refused", flip_fund_tx_pub(b, outs), False),
+        ("fund: block with a junk extra public key before the fund's key is refused", insert_junk_tx_pub(b, outs), False),
+        ("fund: the unmodified block is accepted", blob, True),
+    ]
+    for name, v, want in variants:
+        ok, info = submit(node, v)
+        check(name, ok == want, info)
+    blk = node.rpc("get_block", height=node.height() - 1)
+    vout = json.loads(blk["json"])["miner_tx"]["vout"]
+    check("fund: accepted block on chain pays the fund as its last output", len(vout) == 2 and vout[-1]["amount"] == amounts[1])
+    # pools write their own extra nonce at reserved_offset; that must not touch the fund
+    for size in (8, 60):
+        t = template(node, reserve_size=size)
+        raw = bytearray.fromhex(t["blocktemplate_blob"])
+        off = t["reserved_offset"]
+        raw[off:off + size] = os.urandom(size)
+        blob = with_timestamp(raw.hex(), int(time.time()), 9)
+        ok, info = submit(node, blob)
+        check(f"fund: a pool's {size}-byte extra nonce at reserved_offset leaves a valid block", ok, info)
+    stop(p)
+
+
 def main():
     shim = DATA / "fake_time_offset.so"
     subprocess.check_call(["gcc", "-shared", "-fPIC", "-O2", "-o", str(shim), str(HERE / "fake_time_offset.c")])
     tests = [("reorg depth / future side-chain blocks", test_reorg_depth),
              ("early median-time-past", test_early_median_time),
-             ("slow clock", lambda: test_slow_clock_no_ban(str(shim)))]
+             ("slow clock", lambda: test_slow_clock_no_ban(str(shim))),
+             ("development fund", test_dev_fund_rules)]
     for name, fn in tests:
         try:
             fn()
