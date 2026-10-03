@@ -71,7 +71,7 @@ python3 coinid.py genesis --reward 2384185791015 \
 - [x] Independent AI review of the consensus diff, October 2026 (`docs/REVIEW_2026-10.md`).
 - [ ] Paid human audit of the changed files before mainnet (see `docs/OPACRA_SPEC.md` §5);
       the diff is a few hundred lines.
-- [ ] Decide the block-size constants for 30 s blocks (`docs/REVIEW_2026-10.md`, open decision).
+- [x] Block-size constants scaled for 30 s blocks (`docs/REVIEW_2026-10.md`, decision).
 - [ ] Fix, rebuild and restart testnet if anything changes.
 
 ## 5. Seed nodes

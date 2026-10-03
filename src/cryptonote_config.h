@@ -75,11 +75,18 @@
 // coins before the wider community has joined mining.
 #define SLOW_START_BLOCKS                               ((uint64_t)20160)
 
-#define CRYPTONOTE_REWARD_BLOCKS_WINDOW                 100
+// Opacra: block-size rules scaled to 30 s blocks so they match Monero per unit of real
+// time (Monero: 300 kB per 2-minute block, 100-block and 100,000-block median windows).
+// 75 kB every 30 s gives the same penalty-free room per minute (~40 typical transactions
+// per block before blocks grow with demand), the same spam cost relative to the block
+// reward, and the same time horizons: 3.3 hours short-term, 139 days long-term.
+// Transactions may use at most half the minimum block weight (~36.9 kB, ~50 inputs);
+// wallets split larger spends automatically.
+#define CRYPTONOTE_REWARD_BLOCKS_WINDOW                 400
 #define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2    60000 //size of block (bytes) after which reward for block calculated using block size
 #define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1    20000 //size of block (bytes) after which reward for block calculated using block size - before first fork
-#define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5    300000 //size of block (bytes) after which reward for block calculated using block size - second change, from v5
-#define CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE   100000 // size in blocks of the long term block weight median window
+#define CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5    75000 //size of block (bytes) after which reward for block calculated using block size - second change, from v5 (Opacra: Monero 300000 / 4)
+#define CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE   400000 // size in blocks of the long term block weight median window (Opacra: 139 days, as Monero's 100000 x 2 min)
 #define CRYPTONOTE_SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR 50
 #define CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE          600
 #define CRYPTONOTE_DISPLAY_DECIMAL_POINT                12
@@ -234,7 +241,7 @@
 
 #define HASH_OF_HASHES_STEP                     512
 
-#define DEFAULT_TXPOOL_MAX_WEIGHT               648000000ull // 3 days at 300000, in bytes
+#define DEFAULT_TXPOOL_MAX_WEIGHT               648000000ull // 3 days of full 75 kB blocks every 30 s, in bytes
 
 #define BULLETPROOF_MAX_OUTPUTS                 16
 #define BULLETPROOF_PLUS_MAX_OUTPUTS            16

@@ -75,8 +75,16 @@ static void test_slow_start()
   EXPECT(cryptonote::get_block_reward_at_height(300000, 300000, FULL, r, 16, 100));
   EXPECT_EQ(r, cryptonote::apply_slow_start((MONEY_SUPPLY - FULL) >> 22, 100));
   EXPECT(!cryptonote::get_block_reward_at_height(300000, 300001, FULL, r, 16, 100));
-  EXPECT(!cryptonote::get_block_reward_at_height(0, 300001, FULL, r, 16, SLOW_START_BLOCKS - 1)); // median floored at 300 kB
-  EXPECT(cryptonote::get_block_reward_at_height(0, 299999, FULL, r, 16, SLOW_START_BLOCKS - 1));
+  EXPECT(!cryptonote::get_block_reward_at_height(0, 75001, FULL, r, 16, SLOW_START_BLOCKS - 1)); // median floored at 75 kB
+  EXPECT(cryptonote::get_block_reward_at_height(0, 75000, FULL, r, 16, SLOW_START_BLOCKS - 1));
+  // block-size rules scaled to 30 s blocks (Monero's values per unit of time)
+  EXPECT_EQ(cryptonote::get_min_block_weight(16), size_t(75000));
+  EXPECT_EQ(CRYPTONOTE_REWARD_BLOCKS_WINDOW * DIFFICULTY_TARGET_V2, 100 * 120);
+  EXPECT_EQ(CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE * DIFFICULTY_TARGET_V2, 100000 * 120);
+  EXPECT_EQ(CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5 * 120 / DIFFICULTY_TARGET_V2, 300000);
+  // below the old 300 kB floor but above the new one: allowed only with the penalty after the ramp
+  EXPECT(cryptonote::get_block_reward_at_height(0, 112500, 0, r, 16, SLOW_START_BLOCKS));
+  EXPECT_EQ(r, (uint64_t)(((unsigned __int128)FULL * 37500 * 112500 / 75000) / 75000));
   // after the ramp Monero's penalty zone opens again
   EXPECT(cryptonote::get_block_reward_at_height(300000, 450000, 0, r, 16, SLOW_START_BLOCKS));
   EXPECT_EQ(r, PENALISED);
