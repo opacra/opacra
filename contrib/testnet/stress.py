@@ -265,13 +265,14 @@ def phase_payments(sender, receiver, duration_s):
         time.sleep(60 if n == 1 else 5)
     event(f"sent {len(sent)} payments, {failed} failed attempts")
     # the receiver sends a few back once its coins unlock
-    back = 0
+    back, returns = 0, []
     for _ in range(20):
         try:
             receiver.rpc("refresh")
             if receiver.rpc("get_balance")["unlocked_balance"] > 10 ** 9:
-                receiver.rpc("transfer", destinations=[{"address": sender.rpc("get_address")["address"],
-                                                        "amount": 5 * 10 ** 8}], priority=0)
+                r = receiver.rpc("transfer", destinations=[{"address": sender.rpc("get_address")["address"],
+                                                            "amount": 5 * 10 ** 8}], priority=0)
+                returns.append(r["tx_hash"])
                 back += 1
                 if back >= 5:
                     break
@@ -280,7 +281,7 @@ def phase_payments(sender, receiver, duration_s):
         time.sleep(60)
     # wait for every payment to confirm
     t0 = time.time()
-    pending = {s["hash"] for s in sent}
+    pending = {s["hash"] for s in sent} | set(returns)   # return payments too, so the pool can drain
     while pending and time.time() - t0 < 3600:
         txs = local.other("get_transactions", txs_hashes=list(pending)).get("txs", [])
         for t in txs:
@@ -292,14 +293,20 @@ def phase_payments(sender, receiver, duration_s):
         time.sleep(30)
     with lock:
         state["tx"] = sent
-    check("payments: every payment confirmed", not pending and sent, f"{len(sent)} sent, {len(pending)} unconfirmed")
+    unconfirmed = len(pending - set(returns))
+    check("payments: every payment confirmed", unconfirmed == 0 and sent, f"{len(sent)} sent, {unconfirmed} unconfirmed")
     check("payments: receiver sent payments back", back > 0, f"{back} return payments")
     if sent:
         delays = [s["confirmed_h"] - s["h"] for s in sent if "confirmed_h" in s]
         if delays:
             check("payments: median confirmation within 3 blocks", st.median(delays) <= 3,
                   f"median {st.median(delays)} blocks, max {max(delays)}")
-    pool = local.other("get_transaction_pool_stats").get("pool_stats", {})
+    # give anything still in flight a few blocks to confirm before judging the pool
+    for _ in range(20):
+        pool = local.other("get_transaction_pool_stats").get("pool_stats", {})
+        if pool.get("txs_total", 0) == 0:
+            break
+        time.sleep(30)
     check("payments: mempool drained", pool.get("txs_total", 0) == 0, f"{pool.get('txs_total', 0)} left")
 
 
