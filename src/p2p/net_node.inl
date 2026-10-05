@@ -1816,6 +1816,13 @@ namespace nodetool
       if (server.m_seed_nodes.empty() || m_offline || !m_exclusive_peers.empty())
         return true;
 
+      // Opacra: Monero only asks a seed for its peer list and then hangs up. On a young
+      // network that list can be empty (most nodes are behind NAT and cannot be dialled),
+      // so a node with no outgoing connections keeps the seed as a normal peer instead;
+      // otherwise a new node never syncs, and after a seed restart nodes stay cut off
+      // until the recently-failed cache expires (P2P_FAILED_ADDR_FORGET_SECONDS).
+      const bool just_take_peerlist = get_outgoing_connections_count(server) > 0;
+
       size_t try_count = 0;
       bool is_connected_to_at_least_one_seed_node = false;
       size_t current_index = crypto::rand_idx(server.m_seed_nodes.size());
@@ -1828,7 +1835,7 @@ namespace nodetool
         pe_seed.adr = server.m_seed_nodes[current_index];
         if (is_peer_used(pe_seed))
           is_connected_to_at_least_one_seed_node = true;
-        else if (try_to_connect_and_handshake_with_new_peer(server.m_seed_nodes[current_index], true))
+        else if (try_to_connect_and_handshake_with_new_peer(server.m_seed_nodes[current_index], just_take_peerlist))
           break;
         if(++try_count > server.m_seed_nodes.size())
         {

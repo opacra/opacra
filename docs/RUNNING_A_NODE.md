@@ -69,13 +69,15 @@ in the example config). Onion seed addresses go in
 
 ## Join the public testnet
 
-From v0.1.1 the testnet seed node is built in, so this is enough on any computer:
+From v0.1.2 this is enough on any computer:
 
 ```
 ./opacrad --testnet
 ```
 
-The node finds the seed (169.58.62.247:29970) by itself and syncs. Earlier versions need
+The node finds the seed (169.58.62.247:29970) by itself and syncs. v0.1.1 knew the seed
+but only asked it for other nodes' addresses and then disconnected, which on a network
+this small leaves a new node with nobody to sync from; with v0.1.1 or earlier add
 `--add-priority-node 169.58.62.247:29970`. Testnet coins have no value. Watch the chain at
 https://explorer.opacra.org.
 
