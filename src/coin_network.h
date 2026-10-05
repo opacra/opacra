@@ -33,7 +33,9 @@ namespace coin_network
           // "198.51.100.20:29960",  // seed-2 (example - replace)
         };
       case cryptonote::TESTNET:
-        return {};
+        return {
+          "169.58.62.247:29970",   // testnet seed 1 (Contabo, EU), live since 4 Oct 2026
+        };
       case cryptonote::STAGENET:
         return {};
       default:

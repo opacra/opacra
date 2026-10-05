@@ -42,7 +42,10 @@ fi
 chown -R opacra:opacra /var/lib/opacra
 cp opacrad.service /etc/systemd/system/opacrad.service
 systemctl daemon-reload
-systemctl enable --now opacrad
+systemctl enable opacrad
+# restart (not just start) so that re-running this script with a new package upgrades the node
+systemctl restart opacrad
+sleep 5
 
 # Firewall: only add the rule. Enabling ufw here could cut off other services on a
 # shared server (websites, databases), so that is left to the administrator.

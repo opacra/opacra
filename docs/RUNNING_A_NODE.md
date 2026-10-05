@@ -67,7 +67,23 @@ port 18083 with a port of your choice (for example 29965; 29963 is the ZMQ publi
 in the example config). Onion seed addresses go in
 `src/coin_network.h`.
 
+## Join the public testnet
+
+From v0.1.1 the testnet seed node is built in, so this is enough on any computer:
+
+```
+./opacrad --testnet
+```
+
+The node finds the seed (169.58.62.247:29970) by itself and syncs. Earlier versions need
+`--add-priority-node 169.58.62.247:29970`. Testnet coins have no value. Watch the chain at
+https://explorer.opacra.org.
+
 ## Upgrades
+
+On a seed node installed with `seed-node-setup.sh`, upgrading is running the script again
+with the new package; it keeps `/etc/opacra/opacra.conf` and the chain, and restarts the node.
+
 
 Network upgrades are announced with a block height. Replace the binaries before that
 height and restart the service. The database format is Monero's LMDB format, so no
