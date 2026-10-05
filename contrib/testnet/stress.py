@@ -193,9 +193,16 @@ def tip_watch():
         try:
             li, si = local.info(), seed_info()
             same = li["top_block_hash"] == si["top_block_hash"] or abs(li["height"] - si["height"]) <= 1
+            if not same and not state["phase"].startswith("C-"):
+                # the two reads are seconds apart (the seed is read over ssh): look again
+                # before counting it, and keep the details
+                stop_flag.wait(20)
+                li2, si2 = local.info(), seed_info()
+                if abs(li2["height"] - si2["height"]) > 1:
+                    with lock:
+                        state["tip_mismatch_polls"] += 1
+                    log(f"tips differ: local {li2['height']}, seed {si2['height']}")
             with lock:
-                if not same and not state["phase"].startswith("C-"):
-                    state["tip_mismatch_polls"] += 1
                 state["memory"].append({"t": time.time(), "local_kb": local_rss_kb(), "seed_kb": seed_rss_kb(),
                                         "local_h": li["height"], "seed_h": si["height"]})
         except Exception as e:
@@ -315,7 +322,11 @@ def phase_stats(phase):
     bs = [b for b in state["blocks"] if b["phase"] == phase]
     if len(bs) < 3:
         return None
-    gaps = [bs[i]["t"] - bs[i - 1]["t"] for i in range(1, len(bs))]
+    # only gaps between consecutive heights: a phase can run twice (A-4thr), and the
+    # hours between its two runs are not a block time
+    gaps = [bs[i]["t"] - bs[i - 1]["t"] for i in range(1, len(bs)) if bs[i]["h"] == bs[i - 1]["h"] + 1]
+    if not gaps:
+        return None
     return {"blocks": len(bs), "mean_s": round(st.mean(gaps), 1), "median_s": round(st.median(gaps), 1),
             "max_s": round(max(gaps)), "d_start": bs[0]["d"], "d_end": bs[-1]["d"],
             "mean_last_half_s": round(st.mean(gaps[len(gaps) // 2:]), 1)}
