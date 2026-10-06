@@ -46,28 +46,62 @@ for b in opacrad opacra-wallet-cli opacra-wallet-rpc; do
   x86_64-w64-mingw32-strip "$STAGE/$b.exe"
 done
 cp LICENSE "$STAGE/"
+# Double-click launchers: opacrad.exe started by double-click joins mainnet, which has not launched
+cat > "$STAGE/Start testnet node.bat" <<'BAT'
+@echo off
+cd /d "%~dp0"
+title Opacra testnet node
+echo Opacra testnet node. Leave this window open; type  status  and press Enter to check it.
+echo.
+opacrad.exe --testnet
+pause
+BAT
+cat > "$STAGE/Start testnet wallet.bat" <<'BAT'
+@echo off
+cd /d "%~dp0"
+title Opacra testnet wallet
+if exist mywallet.keys (
+  opacra-wallet-cli.exe --testnet --wallet-file mywallet
+) else (
+  echo No wallet yet: creating one called mywallet.
+  echo.
+  opacra-wallet-cli.exe --testnet --generate-new-wallet mywallet
+)
+pause
+BAT
 cat > "$STAGE/README.txt" <<TXT
 Opacra v$VERSION for Windows (64-bit)
 
-  opacrad.exe            full node and miner
-  opacra-wallet-cli.exe  command-line wallet
-  opacra-wallet-rpc.exe  wallet JSON-RPC server
+  Start testnet node.bat     double-click: runs a testnet node (and miner)
+  Start testnet wallet.bat   double-click: opens your testnet wallet, or creates one
+  opacrad.exe                full node and miner
+  opacra-wallet-cli.exe      command-line wallet
+  opacra-wallet-rpc.exe      wallet JSON-RPC server
 
 Join the public testnet (testnet coins have no value):
 
-  1. Unzip this folder, open it, click the address bar, type  powershell  and press Enter.
-  2. Start a node and leave the window open:
-       .\opacrad.exe --testnet
-     Allow it through Windows Firewall if asked. It finds the network by itself.
-  3. In a second PowerShell window in the same folder, create a wallet:
-       .\opacra-wallet-cli.exe --testnet --generate-new-wallet mywallet
+  1. Unzip this folder.
+  2. Double-click "Start testnet node". Allow it through Windows Firewall if asked.
+     Leave the window open. It finds the network by itself; type  status  and press
+     Enter until it shows 100.0%.
+  3. Double-click "Start testnet wallet". The first time it creates a wallet called
+     mywallet: choose a password, pick a language (1 = English) and keep the 25 words
+     it shows somewhere safe. They restore the wallet; never share them.
   4. In the wallet, mine with 2 CPU threads:   start_mining 2
      and check your earnings with:             balance
+     Mined coins unlock after 60 blocks (about 30 minutes).
+     If the wallet says "Password needed (output received)", type  refresh  and enter
+     your password: it is asking to unlock newly received coins.
+
+Do not start opacrad.exe by double-clicking it: without --testnet it joins mainnet,
+which has not launched yet.
 
 Windows may warn that the program is from an unknown publisher: the files are not
 code-signed. Check the download against the signed checksums on https://opacra.org.
 Block explorer: https://explorer.opacra.org
 TXT
+# Windows line endings for the files people open in Notepad or run as batch files
+sed -i 's/$/\r/' "$STAGE/README.txt" "$STAGE/Start testnet node.bat" "$STAGE/Start testnet wallet.bat"
 (cd "$STAGE" && sha256sum *.exe > SHA256SUMS)
 (cd "$(dirname "$STAGE")" && rm -f "$ROOT/dist/$NAME.zip" && zip -qr "$ROOT/dist/$NAME.zip" "$NAME")
 (cd dist && sha256sum "$NAME.zip" | tee "$NAME.zip.sha256")
