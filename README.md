@@ -117,6 +117,7 @@ contrib/testnet/functional_test.py        # ~1-2 hours on 2 CPU cores
 | [docs/MINING.md](docs/MINING.md) | Solo mining, XMRig, running a pool |
 | [docs/RUNNING_A_NODE.md](docs/RUNNING_A_NODE.md) | VPS seed node setup, systemd, firewall, config file |
 | [docs/TEST_REPORT.md](docs/TEST_REPORT.md) | Results of the private-network functional test |
+| [docs/VERIFYING.md](docs/VERIFYING.md) | Checking a download's signature; release key fingerprint D861 7219 6FEC AAB6 84F5  B3FD CB65 D212 D0B1 162B |
 | [docs/README.monero-upstream.md](docs/README.monero-upstream.md) | Upstream Monero README (build details, Tor/I2P, pruning) |
 
 ## Renaming the coin
