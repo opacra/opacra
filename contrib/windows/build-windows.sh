@@ -85,8 +85,9 @@ Join the public testnet (testnet coins have no value):
      Leave the window open. It finds the network by itself; type  status  and press
      Enter until it shows 100.0%.
   3. Double-click "Start testnet wallet". The first time it creates a wallet called
-     mywallet: choose a password, pick a language (1 = English) and keep the 25 words
-     it shows somewhere safe. They restore the wallet; never share them.
+     mywallet: choose a password, pick a language (1 = English), and answer  N  when
+     it asks about background mining. Keep the 25 words it shows somewhere safe: they
+     restore the wallet. Never share them.
   4. In the wallet, mine with 2 CPU threads:   start_mining 2
      and check your earnings with:             balance
      Mined coins unlock after 60 blocks (about 30 minutes).
