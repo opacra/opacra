@@ -171,25 +171,48 @@ namespace cryptonote {
     return get_dev_fund_keys(nettype, address, view_secret_key);
   }
   //-----------------------------------------------------------------------------------------------
-  void get_dev_fund_tx_key(uint64_t height, crypto::secret_key &tx_key, crypto::public_key &tx_pub_key)
+  uint64_t get_dev_fund_prev_id_binding_height(network_type nettype)
+  {
+    // Security audit (October 2026): r_f = Hs("OpacraDevFund" || height) is known to
+    // everyone in advance, so anyone could send the fund a cheap decoy output with the
+    // same one-time key as a future block's fund output (Monero's "burning bug"). If the
+    // fund ever spent the decoy before that block arrived, its wallet would ignore the
+    // real coinbase output and the coins would be lost. Mixing in the previous block's
+    // hash means the key is only known once the block before it exists, when it is too
+    // late for a decoy to arrive first. Mainnet (and regtest) use it from block 1; the
+    // public testnet switches at this height (v0.1.3 is required before it).
+    switch (nettype)
+    {
+      case TESTNET: return 30000;
+      default:      return 1;
+    }
+  }
+  //-----------------------------------------------------------------------------------------------
+  void get_dev_fund_tx_key(network_type nettype, uint64_t height, const crypto::hash &prev_id, crypto::secret_key &tx_key, crypto::public_key &tx_pub_key)
   {
     static const char domain[] = "OpacraDevFund";
-    char buf[sizeof(domain) - 1 + 8];
+    char buf[sizeof(domain) - 1 + 8 + sizeof(crypto::hash)];
     memcpy(buf, domain, sizeof(domain) - 1);
     const uint64_t h = SWAP64LE(height);
     memcpy(buf + sizeof(domain) - 1, &h, 8);
-    crypto::hash_to_scalar(buf, sizeof(buf), tx_key);
+    size_t len = sizeof(domain) - 1 + 8;
+    if (height >= get_dev_fund_prev_id_binding_height(nettype))
+    {
+      memcpy(buf + len, prev_id.data, sizeof(crypto::hash));
+      len += sizeof(crypto::hash);
+    }
+    crypto::hash_to_scalar(buf, len, tx_key);
     crypto::secret_key_to_public_key(tx_key, tx_pub_key);
   }
   //-----------------------------------------------------------------------------------------------
-  bool get_dev_fund_output(network_type nettype, uint64_t height, size_t output_index, crypto::public_key &output_key, crypto::view_tag &view_tag)
+  bool get_dev_fund_output(network_type nettype, uint64_t height, const crypto::hash &prev_id, size_t output_index, crypto::public_key &output_key, crypto::view_tag &view_tag)
   {
     account_public_address fund;
     if (!get_dev_fund_address(nettype, fund))
       return false;
     crypto::secret_key r;
     crypto::public_key R;
-    get_dev_fund_tx_key(height, r, R);
+    get_dev_fund_tx_key(nettype, height, prev_id, r, R);
     crypto::key_derivation derivation;
     if (!crypto::generate_key_derivation(fund.m_view_public_key, r, derivation))
       return false;

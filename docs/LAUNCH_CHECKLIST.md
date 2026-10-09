@@ -59,6 +59,12 @@ python3 coinid.py genesis --reward 2384185791015 \
       `docs/ANONYMITY_NETWORKS.md`.
 - [ ] Leave `checkpoint_dns_domains`, `update_dns_domains` and `blocklist_dns_domains`
       empty until you control DNSSEC-signed domains for them.
+- [ ] **(consensus, security audit item 1)** Decide on 51% protection before mainnet: Opacra
+      shares Monero's RandomX, so rented or redirected Monero hash power can outmine it.
+      Minimum: DNS checkpoints on a DNSSEC domain (set `checkpoint_dns_domains` for mainnet),
+      hard-coded checkpoints in every release, confirmation guidance published, seeds run
+      with `--block-rate-notify`. Optional hard fork: an Opacra-specific RandomX variant.
+      See `docs/SECURITY_AUDIT_2026-10.md`.
 - [x] Mainnet and testnet fund wallets created offline and set in `src/cryptonote_config.h`
       (3 Oct 2026). Stagenet still uses a placeholder (stagenet is not run publicly).
 - [ ] Development fund (5% of every block): create one wallet per network on an offline

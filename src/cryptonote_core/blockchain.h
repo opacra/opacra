@@ -1215,6 +1215,16 @@ namespace cryptonote
 
     // some invalid blocks
     blocks_ext_by_hash m_invalid_blocks;     // crypto::hash -> block_extended_info
+    // Opacra (security audit): blocks with valid proof of work that were refused only for
+    // being dated too far ahead of our clock (soft reject, no penalty for the peer). Kept so
+    // a peer resending the same block cannot make us recheck its proof of work each time.
+    std::unordered_map<crypto::hash, uint64_t> m_too_new_blocks; // block id -> timestamp
+    void remember_too_new_block(const crypto::hash &id, uint64_t timestamp);
+    // Opacra (security audit): reference difficulty for the side-chain floor, the lower of the
+    // next difficulty and the lowest main-chain difficulty of the last 720 blocks (cached per tip)
+    crypto::hash m_alt_floor_top = crypto::null_hash;
+    difficulty_type m_alt_floor_lowest = 0;
+    difficulty_type get_alt_floor_reference();
 
 
     checkpoints m_checkpoints;

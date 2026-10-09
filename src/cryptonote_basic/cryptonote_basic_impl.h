@@ -92,14 +92,17 @@ namespace cryptonote {
   // uses mainnet's). False if either is malformed or they don't belong together.
   bool get_dev_fund_keys(network_type nettype, account_public_address &address, crypto::secret_key &view_secret_key);
   bool get_dev_fund_address(network_type nettype, account_public_address &address);
-  // The fund output's own transaction key for a block: r_f = Hs("OpacraDevFund" || height),
-  // R_f = r_f*G. It goes into the coinbase as a second transaction public key (after the
-  // extra nonce), so the fund's one-time key is unique per height and fixed by consensus:
-  // no miner can choose it, reuse it or burn it.
-  void get_dev_fund_tx_key(uint64_t height, crypto::secret_key &tx_key, crypto::public_key &tx_pub_key);
+  // The fund output's own transaction key for a block:
+  //   r_f = Hs("OpacraDevFund" || height || prev_id) from get_dev_fund_prev_id_binding_height(),
+  //   r_f = Hs("OpacraDevFund" || height) before it (testnet blocks below 30,000), R_f = r_f*G.
+  // It goes into the coinbase as a second transaction public key (after the extra nonce),
+  // so the fund's one-time key is unique per block and fixed by consensus: no miner can
+  // choose it, reuse it or burn it, and nobody can know it before the previous block exists.
+  uint64_t get_dev_fund_prev_id_binding_height(network_type nettype);
+  void get_dev_fund_tx_key(network_type nettype, uint64_t height, const crypto::hash &prev_id, crypto::secret_key &tx_key, crypto::public_key &tx_pub_key);
   // The one-time key and view tag the fund's output must have at coinbase output index
-  // `output_index` in the block at `height`.
-  bool get_dev_fund_output(network_type nettype, uint64_t height, size_t output_index, crypto::public_key &output_key, crypto::view_tag &view_tag);
+  // `output_index` in the block at `height` whose previous block is `prev_id`.
+  bool get_dev_fund_output(network_type nettype, uint64_t height, const crypto::hash &prev_id, size_t output_index, crypto::public_key &output_key, crypto::view_tag &view_tag);
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl);
   uint8_t get_account_integrated_address_checksum(const public_integrated_address_outer_blob& bl);
 

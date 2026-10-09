@@ -187,11 +187,30 @@ namespace cryptonote {
   // floor of 1/4 of the main chain's difficulty stops the flood without limiting reorg
   // depth. It starts once the main chain has two full LWMA windows (about an hour), so
   // launch-day swings from the startup guess cannot split nodes.
-  bool alt_difficulty_acceptable(uint64_t alt_height, uint64_t main_chain_height, const difficulty_type &alt_difficulty, const difficulty_type &main_next_difficulty)
+  //
+  // Security audit (October 2026): the first version exempted side blocks below height
+  // 122 forever. Block 1 has difficulty 1 and a side chain forked from genesis (timestamp
+  // 0) can claim days of slow blocks, so side blocks at heights 1-121 cost 1-10,000
+  // hashes for as long as the chain exists, and anyone could flood any node with them.
+  // Now the exemption depends only on the main chain's age:
+  //  - In the first hour (main chain below 122 blocks) the floor is 1/4 of the smaller of
+  //    the main chain's reference difficulty and the startup guess, which honest blocks
+  //    always meet, even when LWMA jumps after the startup guess. Block 1 costs the startup
+  //    guess too (Blockchain::get_difficulty_for_next_block; the public testnet's existing
+  //    block 1 keeps difficulty 1), so no height is free.
+  //  - After that every side block, at any height, needs 1/4 of the main chain's reference
+  //    difficulty (Blockchain::get_alt_floor_reference). Trade-off: a launch partition that
+  //    splits within the first 12 blocks and lasts beyond the first hour cannot merge by
+  //    itself (nodes on the losing side need pop_blocks); see docs/SECURITY_AUDIT_2026-10.md.
+  bool alt_difficulty_acceptable(uint64_t alt_height, uint64_t main_chain_height, const difficulty_type &alt_difficulty, const difficulty_type &main_reference_difficulty)
   {
-    if (alt_height < OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT || main_chain_height < OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT)
-      return true;
-    return alt_difficulty >= main_next_difficulty / OPACRA_ALT_MIN_DIFFICULTY_DIVISOR;
+    (void)alt_height;
+    if (main_chain_height < OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT)
+    {
+      const difficulty_type reference = std::min(main_reference_difficulty, difficulty_type(DIFFICULTY_STARTUP_GUESS));
+      return alt_difficulty >= reference / OPACRA_ALT_MIN_DIFFICULTY_DIVISOR;
+    }
+    return alt_difficulty >= main_reference_difficulty / OPACRA_ALT_MIN_DIFFICULTY_DIVISOR;
   }
 
   difficulty_type next_difficulty(std::vector<uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds) {

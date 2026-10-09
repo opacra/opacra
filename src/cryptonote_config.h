@@ -130,8 +130,9 @@
 #define DIFFICULTY_STARTUP_GUESS                        10000
 
 // Opacra: side-chain blocks must have a difficulty of at least 1/4 of the main chain's
-// next difficulty, once both are past the first two LWMA windows (122 blocks, ~1 hour).
-// Stops attackers from walking a side chain's difficulty down to nothing (see
+// next difficulty, at any height, once the main chain is past its first two LWMA windows
+// (122 blocks, ~1 hour; a gentler floor applies before that). Stops attackers from walking
+// a side chain's difficulty down to nothing or sending free side blocks near genesis (see
 // alt_difficulty_acceptable() in difficulty.cpp). There is no limit on reorg depth.
 #define OPACRA_ALT_MIN_DIFFICULTY_DIVISOR               4
 #define OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT           (2 * DIFFICULTY_BLOCKS_COUNT)

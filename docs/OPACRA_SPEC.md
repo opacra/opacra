@@ -70,14 +70,16 @@ The Monero block-size penalty is then applied as usual, and fees are added.
 - **Development fund: 5% of every block's subsidy** (newly created coins; transaction fees
   go entirely to the miner), from block 1 with no end date, including the tail (0.0025 OPCA
   a block). Paid as the last coinbase output (index n−1 of n outputs) to `DEV_FUND_ADDRESS`
-  (A, B) with a per-height transaction key r_f = Hs("OpacraDevFund" ‖ height as 8-byte
-  little-endian), R_f = r_f·G: the output key must be Hs(8·r_f·A ‖ n−1)·G + B with the
+  (A, B) with a per-block transaction key r_f = Hs("OpacraDevFund" ‖ height as 8-byte
+  little-endian ‖ previous block's hash), R_f = r_f·G (the public testnet used
+  Hs("OpacraDevFund" ‖ height) below block 30,000): the output key must be Hs(8·r_f·A ‖ n−1)·G + B with the
   matching view tag, and R_f must appear in the coinbase's extra field as a transaction
   public key (it is appended after the extra nonce, so the miner's key and pools'
   `reserved_offset` are laid out as in Monero). The coinbase's transaction public keys must
   be exactly [miner's key, R_f], both valid points. Blocks that don't follow this exactly
-  are rejected. Because the key is fixed by the height, no miner can choose, reuse or burn the
-  fund's output, and no two blocks share one. The fund's secret view key is published
+  are rejected. Because the key is fixed by the height and the previous block, no miner can
+  choose, reuse or burn the fund's output, no two blocks share one, and nobody can plant a
+  decoy output with the same key before the block exists (security audit, October 2026). The fund's secret view key is published
   (`DEV_FUND_VIEW_KEY`) so anyone can audit every payment it receives (its own spends are
   visible through their change outputs, which is intended); the miner's output keeps its
   random key and privacy. About 110,000 OPCA in year 1 and 500,000 OPCA from the main curve
@@ -158,8 +160,12 @@ Consensus:
     Monero's size penalty to deter chain bloat); `tx_pool.cpp` leaves room for the coinbase.
 12. Side-chain difficulty floor (`difficulty.cpp` `alt_difficulty_acceptable`, used in
     `blockchain.cpp`): once the main chain is past 122 blocks (two LWMA windows, ~1 hour),
-    a side-chain block whose required difficulty is below 1/4 of the main chain's next
-    difficulty is refused. Without checkpoints, a side chain forked from far back could
+    a side-chain block at any height whose required difficulty is below 1/4 of the main
+    chain's reference difficulty is refused. The reference is the lower of the next
+    difficulty and the lowest main-chain difficulty of the last 720 blocks, so a node whose
+    difficulty was inflated during an eclipse still accepts the honest chain. In the first
+    hour the reference is capped at the startup guess (10,000), and a side block 1
+    (difficulty 1) is only accepted while the main chain has at most 10 blocks. Without checkpoints, a side chain forked from far back could
     claim hours of slow blocks and walk its difficulty down to almost nothing, then flood
     nodes with free blocks. A competing chain that could actually win never needs a much
     lower difficulty than ours, so honest reorgs of any depth still work. Side-chain
@@ -167,7 +173,8 @@ Consensus:
 13. Future time limit handling (`blockchain.cpp`, `cryptonote_protocol_handler.inl`): a block
     with valid proof of work that is only ahead of this node's clock is rejected for now
     without penalising the peer (like Bitcoin's time-too-new), so a node with a slow clock
-    cannot end up banning honest peers. The block is fetched again once the node's clock
+    cannot end up banning honest peers. The node remembers such blocks (up to 1,024) and
+    refuses the same block again without rechecking its proof of work. The block is fetched again once the node's clock
     allows it (the next block arrives as an orphan and triggers a sync).
 14. The generated-coins total is no longer capped at `MONEY_SUPPLY` (it now means the main
     curve, not 2^64−1); consensus is unchanged because rewards treat any total at or above
@@ -175,7 +182,7 @@ Consensus:
 15. Development fund (`cryptonote_basic_impl.cpp` `get_dev_fund_share` / `get_dev_fund_output`,
     `cryptonote_tx_utils.cpp` `construct_miner_tx`, `blockchain.cpp`
     `validate_miner_transaction`): from height 1 the coinbase's last output pays 5% of the
-    subsidy to the fund with the per-height key R_f, appended to the extra field after the
+    subsidy to the fund with the per-block key R_f, appended to the extra field after the
     nonce (pools' `reserved_offset` still points at the extra nonce). The node refuses to
     start if the fund address is not a standard address or the published view key doesn't
     belong to it.

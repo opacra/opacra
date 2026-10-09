@@ -944,6 +944,10 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   }
   size_t target = get_difficulty_target();
   difficulty_type diff = next_difficulty(timestamps, difficulties, target);
+  // Opacra (security audit): block 1 costs the startup guess, not 1, so no height near
+  // genesis is free (the public testnet's existing block 1 keeps difficulty 1)
+  if (timestamps.empty() && height == 1 && m_nettype != TESTNET)
+    diff = DIFFICULTY_STARTUP_GUESS;
 
   CRITICAL_REGION_LOCAL1(m_difficulty_lock);
   m_difficulty_for_next_block_top_hash = top_hash;
@@ -1000,6 +1004,10 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
   {
     size_t target = get_ideal_hard_fork_version(height) < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
     difficulty_type recalculated_diff = next_difficulty(timestamps, difficulties, target);
+    // Opacra (security audit): same block-1 rule as get_difficulty_for_next_block, or the
+    // weekly recheck would "repair" every cumulative difficulty from block 1 onwards
+    if (height == 1 && m_nettype != TESTNET)
+      recalculated_diff = DIFFICULTY_STARTUP_GUESS;
 
     boost::multiprecision::uint256_t recalculated_cum_diff_256 = boost::multiprecision::uint256_t(recalculated_diff) + last_cum_diff;
     CHECK_AND_ASSERT_THROW_MES(recalculated_cum_diff_256 <= std::numeric_limits<difficulty_type>::max(), "Difficulty overflow!");
@@ -1303,6 +1311,11 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   // FIXME: This will fail if fork activation heights are subject to voting
   size_t target = get_ideal_hard_fork_version(bei.height) < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
 
+  // Opacra (security audit): block 1 costs the startup guess on every network but the
+  // public testnet, exactly as on the main chain (get_difficulty_for_next_block)
+  if (timestamps.empty() && bei.height == 1 && m_nettype != TESTNET)
+    return DIFFICULTY_STARTUP_GUESS;
+
   // calculate the difficulty target for the block and return it
   return next_difficulty(timestamps, cumulative_difficulties, target);
 }
@@ -1383,7 +1396,7 @@ bool Blockchain::validate_miner_transaction(const block& b, uint64_t height, siz
     return false;
   }
   // Opacra: the last coinbase output must pay the development fund exactly its share of
-  // the subsidy, to the one-time key fixed by the block height (see get_dev_fund_tx_key),
+  // the subsidy, to the one-time key fixed by the block height and previous block (see get_dev_fund_tx_key),
   // and the coinbase must carry the fund's transaction public key R_f so the fund's
   // wallet can find the output.
   const uint64_t dev_fund = get_dev_fund_share(base_reward, height);
@@ -1398,7 +1411,7 @@ bool Blockchain::validate_miner_transaction(const block& b, uint64_t height, siz
     const size_t fund_index = mtx.vout.size() - 1;
     crypto::public_key expected_key;
     crypto::view_tag expected_tag;
-    if (!get_dev_fund_output(m_nettype, height, fund_index, expected_key, expected_tag))
+    if (!get_dev_fund_output(m_nettype, height, b.prev_id, fund_index, expected_key, expected_tag))
     {
       MERROR_VER("failed to derive the development fund output");
       return false;
@@ -1417,7 +1430,7 @@ bool Blockchain::validate_miner_transaction(const block& b, uint64_t height, siz
     // signing), so a junk extra key could otherwise jam the fund's wallet.
     crypto::secret_key fund_tx_key;
     crypto::public_key fund_tx_pub;
-    get_dev_fund_tx_key(height, fund_tx_key, fund_tx_pub);
+    get_dev_fund_tx_key(m_nettype, height, b.prev_id, fund_tx_key, fund_tx_pub);
     std::vector<tx_extra_field> extra_fields;
     parse_tx_extra(mtx.extra, extra_fields);
     std::vector<crypto::public_key> tx_pub_keys;
@@ -1754,7 +1767,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = b.major_version;
   size_t max_outs = hf_version >= 4 ? 1 : 11;
-  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype);
+  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype, b.prev_id);
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
@@ -1763,7 +1776,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
 #endif
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
-    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype);
+    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, m_nettype, b.prev_id);
 
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
     size_t coinbase_weight = get_transaction_weight(b.miner_tx);
@@ -2036,7 +2049,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     // cheap; the sender is penalised like any other invalid block.
     if (!m_fixed_difficulty)
     {
-      const difficulty_type main_next_diff = get_difficulty_for_next_block();
+      const difficulty_type main_next_diff = get_alt_floor_reference();
       if (!alt_difficulty_acceptable(bei.height, m_db->height(), current_diff, main_next_diff))
       {
         MERROR_VER("Block with id: " << id << std::endl << " for alternative chain has difficulty " << current_diff << ", below 1/" << OPACRA_ALT_MIN_DIFFICULTY_DIVISOR << " of the main chain's " << main_next_diff);
@@ -2086,6 +2099,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, has a timestamp too far in the future: " << b.timestamp << " (check this computer's clock)");
       bvc.m_verifivation_failed = true;
       bvc.m_soft_reject = true;
+      remember_too_new_block(id, b.timestamp);
       return false;
     }
 
@@ -4299,6 +4313,7 @@ leave:
     MERROR_VER("Block with id: " << id << std::endl << "has a timestamp too far in the future: " << bl.timestamp << " (check this computer's clock)");
     bvc.m_verifivation_failed = true;
     bvc.m_soft_reject = true;
+    remember_too_new_block(id, bl.timestamp);
     goto leave;
   }
 
@@ -4815,6 +4830,24 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
     return false;
   }
 
+  // Opacra (security audit): a block we already refused only for being too far in the
+  // future is refused again without rechecking its proof of work, until our clock
+  // catches up. The id commits to the whole block, timestamp included.
+  {
+    const auto too_new = m_too_new_blocks.find(id);
+    if (too_new != m_too_new_blocks.end())
+    {
+      if (bl.timestamp > (uint64_t)time(NULL) + CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT)
+      {
+        LOG_PRINT_L1("Block " << id << " is still too far in the future, refused again without rechecking");
+        bvc.m_verifivation_failed = true;
+        bvc.m_soft_reject = true;
+        return false;
+      }
+      m_too_new_blocks.erase(too_new);
+    }
+  }
+
   //check that block refers to chain tail
   if(!(bl.prev_id == get_tail_id()))
   {
@@ -4835,6 +4868,47 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
     bvc.m_verifivation_failed = true;
     return false;
   }
+}
+//------------------------------------------------------------------
+// Opacra (security audit): the side-chain floor's reference difficulty. Comparing only with
+// the main chain's next difficulty let an attacker who eclipses a node inflate that node's
+// difficulty (fake 1-second blocks: 27 blocks, about 52 honest blocks of work, reach 4x)
+// so that the node refused the honest chain for ever once the eclipse ended. Using the
+// lowest main-chain difficulty of the last 720 blocks (6 hours) means the attacker would
+// need over 720 inflated blocks, about a day of the whole network's hash power. The floor
+// can only get lower than before, so it never refuses a block the old rule accepted.
+difficulty_type Blockchain::get_alt_floor_reference()
+{
+  const difficulty_type next = get_difficulty_for_next_block();
+  const crypto::hash top = get_tail_id();
+  if (top != m_alt_floor_top)
+  {
+    static const uint64_t lookback = 720;
+    const uint64_t height = m_db->height();
+    difficulty_type lowest = next;
+    // after the first hour only blocks past it count (the fixed startup-guess blocks would
+    // otherwise hold the reference at 10,000 for six hours); before it the floor is capped
+    // at the startup guess anyway
+    const uint64_t not_before = height >= OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT ? OPACRA_ALT_MIN_DIFFICULTY_FROM_HEIGHT : 2;
+    for (uint64_t h = std::max<uint64_t>(height > lookback ? height - lookback : 0, not_before); h < height; ++h)
+    {
+      const difficulty_type d = m_db->get_block_difficulty(h);
+      if (d < lowest)
+        lowest = d;
+    }
+    m_alt_floor_top = top;
+    m_alt_floor_lowest = lowest;
+  }
+  return std::min(next, m_alt_floor_lowest);
+}
+//------------------------------------------------------------------
+void Blockchain::remember_too_new_block(const crypto::hash &id, uint64_t timestamp)
+{
+  // bounded: a flood of distinct too-new blocks (each needing real proof of work) only
+  // resets the list, it cannot grow memory
+  if (m_too_new_blocks.size() >= 1024)
+    m_too_new_blocks.clear();
+  m_too_new_blocks[id] = timestamp;
 }
 //------------------------------------------------------------------
 //TODO: Refactor, consider returning a failure height and letting

@@ -17,7 +17,14 @@ power-efficient than desktop CPUs, so CPU mining stays viable.
   - XMRig works unchanged against pools. For solo mining against your own node (XMRig's
     `--daemon` mode), XMRig 6.26 rejects coinbases with more than one output; build it with
     `contrib/xmrig/opacra-solo-mining.patch` (tested: blocks accepted with the fund paid).
-  - Pools that build their own coinbase (p2pool-style) must add the fund output themselves.
+  - Pools that build their own coinbase (p2pool-style) must add the fund output themselves,
+    with the transaction key r_f = Hs("OpacraDevFund" ‖ height ‖ previous block hash)
+    (`get_dev_fund_tx_key`; the public testnet used Hs("OpacraDevFund" ‖ height) below
+    block 30,000). Pools using `get_block_template` and `reserved_offset` need no change.
+- Confirmations: blocks come every 30 seconds and Opacra shares RandomX with Monero, so a
+  well-funded attacker could rent enough hash power to rewrite recent blocks (see
+  `docs/SECURITY_AUDIT_2026-10.md`). Wait for at least 20 blocks (10 minutes) before treating
+  a payment as final, and 120 blocks (1 hour) for large amounts or exchange deposits.
 - Mined coins unlock after 60 blocks (about 30 minutes).
 - RandomX needs ~2.3 GB of RAM per miner process for full speed ("fast mode").
 
