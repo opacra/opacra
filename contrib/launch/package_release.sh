@@ -44,15 +44,21 @@ EOF
 tar -C "$STAGE" -czf "$OUT/$BIN_DIR.tar.gz" "$BIN_DIR"
 rm -rf "$STAGE"
 
-# 2. source with submodules and git history (no build output)
+# 2. source with submodules and git history (no build output). The Windows build leaves
+#    gigabytes of downloaded and built libraries in contrib/depends; leave those out too.
 SRC_DIR="opacra-v$VERSION-source"
+R="$(basename "$ROOT")"
+DEPENDS_EXCLUDES=()
+for d in SDKs work built sources config.site 'x86_64*' 'i686*' 'mips*' 'arm*' 'aarch64*'; do
+  DEPENDS_EXCLUDES+=(--exclude="$R/contrib/depends/$d")
+done
 tar -C "$(dirname "$ROOT")" --exclude="$(basename "$ROOT")/build" --exclude="$(basename "$ROOT")/dist" \
-    --exclude='__pycache__' --transform "s,^$(basename "$ROOT"),$SRC_DIR," \
+    --exclude='__pycache__' "${DEPENDS_EXCLUDES[@]}" --transform "s,^$(basename "$ROOT"),$SRC_DIR," \
     -czf "$OUT/$SRC_DIR.tar.gz" "$(basename "$ROOT")"
 
 # 2b. the same source without git metadata, xz-compressed (smaller; builds the same)
 tar -C "$(dirname "$ROOT")" --exclude="$(basename "$ROOT")/build" --exclude="$(basename "$ROOT")/dist" \
-    --exclude='__pycache__' --exclude='.git' --transform "s,^$(basename "$ROOT"),$SRC_DIR," \
+    --exclude='__pycache__' --exclude='.git' "${DEPENDS_EXCLUDES[@]}" --transform "s,^$(basename "$ROOT"),$SRC_DIR," \
     -cJf "$OUT/$SRC_DIR-nogit.tar.xz" "$(basename "$ROOT")"
 
 # 3. patch series against upstream Monero
