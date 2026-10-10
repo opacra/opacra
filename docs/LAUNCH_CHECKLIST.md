@@ -135,6 +135,12 @@ Edit `/etc/opacra/opacra.conf` on each seed and add the other seeds as
    genesis hash. State clearly that there is **no premine** and that 5% of every block
    goes to the development fund, with the fund's address and view key.
 2. T−1 hour: seed nodes, explorer and pools running and synced at height 0.
+   A node only allows mining (`start_mining`, `get_block_template`) once a peer has
+   reported a height at least equal to its own. Seeds connected to each other at the
+   genesis block satisfy this. A node that is alone, or ahead of every peer it can reach,
+   answers `BUSY` instead (seen when testnet 2 started on 10 Oct 2026). Have at least two
+   seeds connected before T. To bootstrap a lone node anyway, start it with `--offline`,
+   then restart it normally once a peer has caught up.
 3. T: announce "mining is open". The 7-day slow start keeps early blocks small, so
    there is no advantage in being first.
 4. Watch the explorer and `opacrad status` on all seeds. Block times settle after about
