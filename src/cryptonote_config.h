@@ -337,11 +337,14 @@ namespace config
     uint16_t const P2P_DEFAULT_PORT = 29970;
     uint16_t const RPC_DEFAULT_PORT = 29971;
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 29972;
+    // Opacra testnet 2, from 10 Oct 2026: a fresh chain with Opacra's own RandomX salt
+    // (RandomOPCA). New network ID and genesis, so nodes of the first public testnet
+    // (4-10 Oct 2026, v0.1.x, Monero's rx/0) never connect to it.
     boost::uuids::uuid const NETWORK_ID = { {
-        0x8F, 0xB1, 0x39, 0x6E, 0xD4, 0x92, 0xE2, 0xE5, 0xC9, 0x68, 0x25, 0x15, 0x17, 0x0B, 0x5F, 0x91
+        0xDB, 0xE3, 0x82, 0xC4, 0xDB, 0xE4, 0x46, 0xC2, 0xC1, 0x5E, 0x53, 0x28, 0x82, 0xBE, 0xFE, 0x7E
       } };
-    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b145029f2f9831645742126ae225f9660bf52079f95792919a2a6a8bd9acb57eaf6f514601c3f0f15ec3eb910212e78b99ff0a0a701fb9d578e7942ee4f30956786de8604902234f706163726120746573746e65742067656e65736973207c20323032362d31302d3032";
-    uint32_t const GENESIS_NONCE = 10001;
+    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b145023c29b60b40e17738c30facb391344338e51c253e4a4d1715685f02afd47e1791550175828ffe9ccd38f1544c790eb0d6f290bf275980989f3e775aaab2732bed981002324f706163726120746573746e657420322067656e65736973207c20323032362d31302d3130207c2052616e646f6d4f504341";
+    uint32_t const GENESIS_NONCE = 10003;
     // Development fund: receives OPACRA_DEV_FUND_PERCENT of every block subsidy. Must be a
     // standard address. The project's offline testnet fund wallet (created 3 Oct 2026).
     std::string const DEV_FUND_ADDRESS = "Te1fW4xtitRA7yzFYdkToMJYcxgYdt4BzWswBjAX3HS4CUMFmMEcWScL6QMhoYfYLs4yCR9Cma9Qv31e3eLCF7Du33Wb2ABRJ";

@@ -12,9 +12,9 @@ Tor/I2P support, LMDB storage, pruning, RPC APIs (method names unchanged).
 | Block target | 30 s (all block versions) | `DIFFICULTY_TARGET_V1/V2`, `src/cryptonote_config.h` |
 | Blocks per day / year | 2,880 / 1,051,920 | |
 | Development fund | 5% of each block's subsidy from block 1, forever; fees go to miners | `OPACRA_DEV_FUND_PERCENT`, `DEV_FUND_ADDRESS` |
-| Proof of work | RandomX (`rx/0`), seed epoch 2048 blocks, lag 64 | unchanged |
+| Proof of work | RandomOPCA: RandomX with Opacra's own Argon2 salt `"RandomOPCA\x01"` (XMRig `rx/opca`); seed epoch 2048 blocks, lag 64 | `external/randomx/src/configuration.h` (Monero: `rx/0`, salt `"RandomX\x03"`) |
 | Difficulty algorithm | LWMA-1, N = 60 (30 min) | `src/cryptonote_basic/difficulty.cpp` |
-| Startup difficulty | block 1: 1; blocks 2–12: 10,000 (`DIFFICULTY_STARTUP_GUESS`); LWMA from block 13 with the blocks available | |
+| Startup difficulty | blocks 1–12: 10,000 (`DIFFICULTY_STARTUP_GUESS`; the first public testnet's block 1 had difficulty 1); LWMA from block 13 with the blocks available | |
 | Future time limit | 180 s (Monero: 7,200 s) | `CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT` |
 | Median-time-past window | 11 blocks (Monero: 60) | `BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW` |
 | Coinbase maturity | 60 blocks (~30 min) | `CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW` |
@@ -119,11 +119,14 @@ on a small chain. LWMA is the most widely deployed replacement in CryptoNote cha
 | Address prefix (standard / integrated / subaddress) | 30598 `Pa` / 24839 `Pi` / 22408 `Ps` | 8479 `Te` / 11935 `Tf` / 15263 `Tg` | 28440 `Sa` / 22809 `Si` / 20378 `Ss` |
 | Address length | 98 / 109 / 98 characters | 97 / 108 / 97 | 98 / 109 / 98 |
 | P2P / RPC / ZMQ ports | 29960 / 29961 / 29962 | 29970 / 29971 / 29972 | 29980 / 29981 / 29982 |
-| Network ID | `BC2D893E-96B8-F691-199F-373CE5BC4718` | `8FB1396E-D492-E2E5-C968-2515170B5F91` | `0F57C4D1-D344-63D1-3D6F-FD9DD5F24042` |
-| Genesis message | "Opacra mainnet genesis \| 2026-10-02 \| Private by default, auditable by choice." | "Opacra testnet genesis \| 2026-10-02" | "Opacra stagenet genesis \| 2026-10-02" |
+| Network ID | `BC2D893E-96B8-F691-199F-373CE5BC4718` | testnet 2: `DBE382C4-DBE4-46C2-C15E-532882BEFE7E` | `0F57C4D1-D344-63D1-3D6F-FD9DD5F24042` |
+| Genesis message | "Opacra mainnet genesis \| 2026-10-02 \| Private by default, auditable by choice." | "Opacra testnet 2 genesis \| 2026-10-10 \| RandomOPCA" | "Opacra stagenet genesis \| 2026-10-02" |
 
 Message-signing domain: `OpacraMessageSignature` (signatures cannot be replayed on Monero).
-Data directory `~/.opacra`, config file `opacra.conf`, log `opacra.log`.
+Data directory `~/.opacra` (testnet: `~/.opacra/testnet2`), config file `opacra.conf`, log `opacra.log`.
+
+Testnet 2 (from 10 Oct 2026, v0.2.0) replaced the first public testnet (4–10 Oct 2026,
+v0.1.x), which used Monero's `rx/0`; the new network ID and data folder keep the two apart.
 
 These values are the **development identity**. Generate fresh network IDs and genesis
 transactions on launch day (`contrib/coin-identity/coinid.py`).
@@ -207,6 +210,12 @@ Network and wallet:
     difficulty recheck covers the last 20,160 blocks instead of the whole chain.
 21. Wallets: `ignore-outputs-above` defaults to 2^64−1 (Monero used `MONEY_SUPPLY`, which
     is no longer 2^64−1); OpenAlias records use `oa1:opca`.
+22. `external/randomx` (now vendored instead of a git submodule): `RANDOMX_ARGON_SALT` is
+    `"RandomOPCA\x01"`, as RandomX's documentation asks of every implementation. Every hash
+    differs from Monero's `rx/0`, so Monero miners, pools and rental markets cannot mine
+    Opacra unchanged (security audit item 1). Reference vector: key "test key 000", input
+    "This is a test" → `460b9dbac09aa34bd64b275599f95195d2cd2eaf3dd6eb0b1e2631d9d3e7cafc`
+    (Monero: `639183aa…`). XMRig needs `contrib/xmrig/opacra-xmrig.patch` (`rx/opca`).
 
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,

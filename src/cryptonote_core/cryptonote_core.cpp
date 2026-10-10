@@ -105,7 +105,7 @@ namespace cryptonote
   , {{ &arg_testnet_on, &arg_stagenet_on, &arg_regtest_on }}
   , [](std::array<bool, 3> nets, bool defaulted, std::string val)->std::string {
       if (nets[0])
-        return (boost::filesystem::path(val) / "testnet").string();
+        return (boost::filesystem::path(val) / "testnet2").string(); // Opacra: testnet 2 (RandomOPCA), so old testnet data never clashes
       else if (nets[1])
         return (boost::filesystem::path(val) / "stagenet").string();
       else if (nets[2])

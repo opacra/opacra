@@ -1,15 +1,23 @@
-# XMRig for Opacra solo mining
+# XMRig for Opacra
 
-Every Opacra coinbase has two outputs: the miner's and the 5% development fund. XMRig 6.26
-accepts only one coinbase output in solo (`--daemon`) mode, so it rejects Opacra templates.
-Pool mining is not affected.
+Opacra mines **RandomOPCA**: RandomX with Opacra's own salt (`"RandomOPCA\x01"`, see
+`external/randomx/OPACRA.md`). Stock XMRig doesn't know it, so Opacra publishes a patched
+build. `opacra-xmrig.patch` (against XMRig v6.26.0) does two things:
+
+1. Adds the algorithm `rx/opca` (RandomX with Opacra's salt; nothing else changed) and
+   the coin `opacra` / `OPCA`.
+2. Lets solo (`--daemon`) mode accept Opacra block templates, whose coinbase has two
+   outputs (the miner's and the 5% development fund). Stock XMRig accepts only one.
 
 ```bash
 git clone https://github.com/xmrig/xmrig && cd xmrig && git checkout v6.26.0
-git apply /path/to/opacra/contrib/xmrig/opacra-solo-mining.patch
+git apply /path/to/opacra/contrib/xmrig/opacra-xmrig.patch
 mkdir build && cd build && cmake .. && make -j$(nproc)
-./xmrig -o 127.0.0.1:29961 --daemon -a rx/0 -u Pa<your address> --coin monero
+
+# solo, against your own node (testnet RPC port 29971, mainnet 29961)
+./xmrig -o 127.0.0.1:29971 --daemon -a rx/opca --coin opacra -u Te<your testnet address>
 ```
 
-The patch only teaches XMRig's template parser to skip extra coinbase outputs; hashing and
-block submission are unchanged.
+Hashing, block submission and everything else in XMRig are unchanged. The Opacra
+release script signs the built binaries' checksums with the release key; download
+miners only from opacra.org.

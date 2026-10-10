@@ -21,6 +21,7 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "string_tools.h"
 #include "int-util.h"
+#include "randomx.h"
 
 using cryptonote::difficulty_type;
 
@@ -307,7 +308,8 @@ static void test_dev_fund()
   crypto::public_key fR1, fR2, fR3, fR4;
   EXPECT_EQ(get_dev_fund_prev_id_binding_height(MAINNET), uint64_t(1));
   EXPECT_EQ(get_dev_fund_prev_id_binding_height(FAKECHAIN), uint64_t(1));
-  EXPECT_EQ(get_dev_fund_prev_id_binding_height(TESTNET), uint64_t(30000));
+  EXPECT_EQ(get_dev_fund_prev_id_binding_height(TESTNET), uint64_t(1));
+  EXPECT_EQ(get_dev_fund_prev_id_binding_height(STAGENET), uint64_t(1));
   get_dev_fund_tx_key(MAINNET, 100, prev, fr1, fR1);
   get_dev_fund_tx_key(MAINNET, 100, prev, fr2, fR2);
   EXPECT(fR1 == fR2);
@@ -315,26 +317,10 @@ static void test_dev_fund()
   EXPECT(!(fR1 == fR3));
   get_dev_fund_tx_key(MAINNET, 100, other_prev, fr2, fR4);
   EXPECT(!(fR1 == fR4));
-  // the public testnet keeps the old per-height key below 30,000 (its existing blocks stay
-  // valid) and binds the previous block from 30,000
-  get_dev_fund_tx_key(TESTNET, 29999, prev, fr2, fR3);
-  get_dev_fund_tx_key(TESTNET, 29999, other_prev, fr2, fR4);
-  EXPECT(fR3 == fR4);
-  get_dev_fund_tx_key(TESTNET, 30000, prev, fr2, fR3);
-  get_dev_fund_tx_key(TESTNET, 30000, other_prev, fr2, fR4);
+  // testnet 2 binds the previous block from block 1, like mainnet
+  get_dev_fund_tx_key(TESTNET, 1, prev, fr2, fR3);
+  get_dev_fund_tx_key(TESTNET, 1, other_prev, fr2, fR4);
   EXPECT(!(fR3 == fR4));
-  {
-    // below the switch the key is exactly the original Hs("OpacraDevFund" || height)
-    char legacy[13 + 8];
-    memcpy(legacy, "OpacraDevFund", 13);
-    const uint64_t h = SWAP64LE(uint64_t(29999));
-    memcpy(legacy + 13, &h, 8);
-    crypto::secret_key lr; crypto::public_key lR;
-    crypto::hash_to_scalar(legacy, sizeof(legacy), lr);
-    crypto::secret_key_to_public_key(lr, lR);
-    get_dev_fund_tx_key(TESTNET, 29999, prev, fr2, fR3);
-    EXPECT(lR == fR3);
-  }
 
   // a coinbase at height 100: miner output first (paid with the coinbase's random key),
   // fund output last with 5% of the subsidy (paid with R_f, the second tx public key)
@@ -392,6 +378,36 @@ static void test_dev_fund()
   EXPECT_EQ(g.vout.size(), size_t(1));
 }
 
+// Opacra's RandomX salt (RandomOPCA): every hash differs from Monero's rx/0, so Monero
+// hash power cannot mine Opacra unchanged. Reference input from RandomX's own test suite.
+static std::string randomx_hex(const char *key, const char *input)
+{
+  const randomx_flags flags = randomx_get_flags();
+  randomx_cache *cache = randomx_alloc_cache(flags);
+  if (!cache) return "";
+  randomx_init_cache(cache, key, strlen(key));
+  randomx_vm *vm = randomx_create_vm(flags, cache, nullptr);
+  if (!vm) { randomx_release_cache(cache); return ""; }
+  unsigned char h[RANDOMX_HASH_SIZE];
+  randomx_calculate_hash(vm, input, strlen(input), h);
+  randomx_destroy_vm(vm);
+  randomx_release_cache(cache);
+  static const char digits[] = "0123456789abcdef";
+  std::string out;
+  for (unsigned char c: h) { out.push_back(digits[c >> 4]); out.push_back(digits[c & 15]); }
+  return out;
+}
+
+static void test_randomx_variant()
+{
+  const std::string ours = randomx_hex("test key 000", "This is a test");
+  std::printf("RandomOPCA hash of RandomX's reference input: %s\n", ours.c_str());
+  EXPECT(ours.size() == 64);
+  EXPECT(ours != "639183aae1bf4c9a35884cb46b09cad9175f04efd7684e7262a0ac1c2f0b4e3f");   // Monero rx/0
+  EXPECT(ours == randomx_hex("test key 000", "This is a test"));                         // deterministic
+  EXPECT(ours == "460b9dbac09aa34bd64b275599f95195d2cd2eaf3dd6eb0b1e2631d9d3e7cafc");   // RandomOPCA reference vector
+}
+
 static void test_hardforks_and_identity()
 {
   EXPECT_EQ(num_mainnet_hard_forks, (size_t)2);
@@ -427,6 +443,7 @@ int main()
   test_alt_difficulty_floor();
   test_dev_fund();
   test_hardforks_and_identity();
+  test_randomx_variant();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

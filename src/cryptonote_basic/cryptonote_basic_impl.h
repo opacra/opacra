@@ -93,8 +93,8 @@ namespace cryptonote {
   bool get_dev_fund_keys(network_type nettype, account_public_address &address, crypto::secret_key &view_secret_key);
   bool get_dev_fund_address(network_type nettype, account_public_address &address);
   // The fund output's own transaction key for a block:
-  //   r_f = Hs("OpacraDevFund" || height || prev_id) from get_dev_fund_prev_id_binding_height(),
-  //   r_f = Hs("OpacraDevFund" || height) before it (testnet blocks below 30,000), R_f = r_f*G.
+  //   r_f = Hs("OpacraDevFund" || height || prev_id) from get_dev_fund_prev_id_binding_height()
+  //   (block 1 on every network), R_f = r_f*G.
   // It goes into the coinbase as a second transaction public key (after the extra nonce),
   // so the fund's one-time key is unique per block and fixed by consensus: no miner can
   // choose it, reuse it or burn it, and nobody can know it before the previous block exists.

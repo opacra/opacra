@@ -1,5 +1,17 @@
 # External miner test: XMRig
 
+## v0.2.0 (10 Oct 2026): RandomOPCA
+
+From v0.2.0 Opacra hashes RandomOPCA (RandomX with Opacra's salt). On a local regtest node at
+a fixed difficulty of 3,000, using XMRig 6.26.0 with `contrib/xmrig/opacra-xmrig.patch`:
+
+| Run (90 s each, 2 threads) | Blocks submitted | Accepted |
+|---|---|---|
+| `-a rx/0 --coin monero` (Monero's algorithm) | 10 | 0, all refused: "does not have enough proof of work" |
+| `-a rx/opca --coin opacra` (Opacra build) | 17 | 17 (height 1 to 18) |
+
+The older results below are for v0.1.x, which used Monero's `rx/0`.
+
 
 _XMRig was tested on the build before the rename (Tacita, 2026-09-28). The proof-of-work, block format and daemon RPC are unchanged by the rename; only the coin identity differs._
 

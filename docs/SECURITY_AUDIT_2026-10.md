@@ -16,7 +16,7 @@ fund-key change below).
 
 | # | Severity | Finding | Status |
 |---|---|---|---|
-| 1 | High (mainnet) | Opacra uses Monero's own RandomX, so anyone can rent or redirect Monero hash power and outmine the whole network; with no checkpoints there is no limit on how deep they can rewrite | Open: needs decisions before mainnet (see below) |
+| 1 | High (mainnet) | Opacra uses Monero's own RandomX, so anyone can rent or redirect Monero hash power and outmine the whole network; with no checkpoints there is no limit on how deep they can rewrite | Partly fixed in v0.2.0 (own RandomX salt, testnet 2); checkpoints and DNS checkpoints still to do (see the mining security plan) |
 | 2 | High | Free side-chain blocks near genesis: anyone could send any node unlimited side blocks at height 1 (difficulty 1) and near-free ones up to height 121, for as long as the chain exists | Fixed in v0.1.3 |
 | 3 | Medium | Development-fund outputs could be pre-burned: the fund's transaction key for every future block was public, so a decoy output with the same one-time key could be planted in advance | Fixed in v0.1.3 (testnet from block 30,000) |
 | 4 | Medium | After an eclipse, a node whose difficulty an attacker had inflated would refuse the honest chain for ever | Fixed in v0.1.3 |
@@ -55,11 +55,13 @@ raise the cost; they are listed in order of value for money:
    for ordinary payments, 120 blocks (1 hour) for large amounts and exchange deposits.
 4. **Monitoring.** Run seeds with `--block-rate-notify` (already built in) and alert when
    the block rate or a reorganisation looks abnormal.
-5. **Optional: an Opacra-specific RandomX variant** (different Argon2 salt and program
-   parameters, as Wownero and others have done). Rental markets and Monero pools could then
-   no longer redirect hash power without new software. The cost is that miners need an
-   Opacra build of XMRig, and every pool needs it too. It is a hard fork, so decide before
-   mainnet.
+5. **An Opacra-specific RandomX variant. Done in v0.2.0 (10 Oct 2026).** RandomOPCA changes
+   only RandomX's Argon2 salt, as RandomX's documentation asks of every implementation, so
+   the algorithm's design and security analysis are unchanged. Rental markets and Monero
+   pools can no longer redirect hash power without new software. Miners use the built-in
+   miner or the Opacra XMRig build (`rx/opca`). Live test on a local node: stock XMRig
+   (`rx/0`) submitted 10 blocks and all 10 were refused for insufficient proof of work; the
+   Opacra build mined 17 blocks, all accepted. The public testnet was restarted as testnet 2.
 
 ## 2. Free side-chain blocks near genesis (fixed)
 

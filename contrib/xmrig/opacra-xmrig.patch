@@ -1,0 +1,182 @@
+diff --git a/src/base/crypto/Algorithm.cpp b/src/base/crypto/Algorithm.cpp
+index 433697a..a81c456 100644
+--- a/src/base/crypto/Algorithm.cpp
++++ b/src/base/crypto/Algorithm.cpp
+@@ -83,6 +83,7 @@ const char *Algorithm::kRX_ARQ          = "rx/arq";
+ const char *Algorithm::kRX_GRAFT        = "rx/graft";
+ const char *Algorithm::kRX_SFX          = "rx/sfx";
+ const char *Algorithm::kRX_YADA         = "rx/yada";
++const char *Algorithm::kRX_OPCA         = "rx/opca";
+ #endif
+ 
+ #ifdef XMRIG_ALGO_ARGON2
+@@ -150,6 +151,7 @@ static const std::map<uint32_t, const char *> kAlgorithmNames = {
+     ALGO_NAME(RX_GRAFT),
+     ALGO_NAME(RX_SFX),
+     ALGO_NAME(RX_YADA),
++    ALGO_NAME(RX_OPCA),
+ #   endif
+ 
+ #   ifdef XMRIG_ALGO_ARGON2
+@@ -267,6 +269,8 @@ static const std::map<const char *, Algorithm::Id, aliasCompare> kAlgorithmAlias
+                                     ALGO_ALIAS(RX_SFX,          "randomsfx"),
+     ALGO_ALIAS_AUTO(RX_YADA),       ALGO_ALIAS(RX_YADA,         "randomx/yada"),
+                                     ALGO_ALIAS(RX_YADA,         "randomyada"),
++    ALGO_ALIAS_AUTO(RX_OPCA),       ALGO_ALIAS(RX_OPCA,         "randomx/opca"),
++                                    ALGO_ALIAS(RX_OPCA,         "randomopca"),
+ #   endif
+ 
+ #   ifdef XMRIG_ALGO_ARGON2
+@@ -354,7 +358,7 @@ std::vector<xmrig::Algorithm> xmrig::Algorithm::all(const std::function<bool(con
+         CN_HEAVY_0, CN_HEAVY_TUBE, CN_HEAVY_XHV,
+         CN_PICO_0, CN_PICO_TLO,
+         CN_UPX2,
+-        RX_0, RX_V2, RX_WOW, RX_ARQ, RX_GRAFT, RX_SFX, RX_YADA,
++        RX_0, RX_V2, RX_WOW, RX_ARQ, RX_GRAFT, RX_SFX, RX_YADA, RX_OPCA,
+         AR2_CHUKWA, AR2_CHUKWA_V2, AR2_WRKZ,
+         KAWPOW_RVN,
+         GHOSTRIDER_RTM
+diff --git a/src/base/crypto/Algorithm.h b/src/base/crypto/Algorithm.h
+index 1dc8052..7a5d316 100644
+--- a/src/base/crypto/Algorithm.h
++++ b/src/base/crypto/Algorithm.h
+@@ -79,6 +79,7 @@ public:
+         RX_GRAFT        = 0x72151267,   // "rx/graft"         RandomGRAFT (Graft).
+         RX_SFX          = 0x72151273,   // "rx/sfx"           RandomSFX (Safex Cash).
+         RX_YADA         = 0x72151279,   // "rx/yada"          RandomYada (YadaCoin).
++        RX_OPCA         = 0x7215126f,   // "rx/opca"          RandomOPCA (Opacra).
+         AR2_CHUKWA      = 0x61130000,   // "argon2/chukwa"    Argon2id (Chukwa).
+         AR2_CHUKWA_V2   = 0x61140000,   // "argon2/chukwav2"  Argon2id (Chukwa v2).
+         AR2_WRKZ        = 0x61120000,   // "argon2/wrkz"      Argon2id (WRKZ)
+@@ -146,6 +147,7 @@ public:
+     static const char *kRX_GRAFT;
+     static const char *kRX_SFX;
+     static const char *kRX_YADA;
++    static const char *kRX_OPCA;
+ #   endif
+ 
+ #   ifdef XMRIG_ALGO_ARGON2
+diff --git a/src/base/crypto/Coin.cpp b/src/base/crypto/Coin.cpp
+index 85cc605..ef3f44b 100644
+--- a/src/base/crypto/Coin.cpp
++++ b/src/base/crypto/Coin.cpp
+@@ -55,6 +55,7 @@ static const CoinInfo coinInfo[] = {
+     { Algorithm::RX_0,            "ZEPH",     "Zephyr",       120,    1000000000000,  BLUE_BG_BOLD(   WHITE_BOLD_S " zephyr  ") },
+     { Algorithm::RX_0,            "Townforge","Townforge",    30,     100000000,      MAGENTA_BG_BOLD(WHITE_BOLD_S " townforge ") },
+     { Algorithm::RX_YADA,         "YDA",      "YadaCoin",     120,    100000000,      BLUE_BG_BOLD(   WHITE_BOLD_S " yada    ") },
++    { Algorithm::RX_OPCA,         "OPCA",     "Opacra",       30,     1000000000000,  MAGENTA_BG_BOLD(WHITE_BOLD_S " opacra  ") },
+ };
+ 
+ 
+diff --git a/src/base/crypto/Coin.h b/src/base/crypto/Coin.h
+index c3c97fd..8d0c343 100644
+--- a/src/base/crypto/Coin.h
++++ b/src/base/crypto/Coin.h
+@@ -41,6 +41,7 @@ public:
+         ZEPHYR,
+         TOWNFORGE,
+         YADA,
++        OPACRA,
+         MAX
+     };
+ 
+diff --git a/src/base/tools/cryptonote/BlockTemplate.cpp b/src/base/tools/cryptonote/BlockTemplate.cpp
+index 5493336..89e3bff 100644
+--- a/src/base/tools/cryptonote/BlockTemplate.cpp
++++ b/src/base/tools/cryptonote/BlockTemplate.cpp
+@@ -263,7 +263,8 @@ bool xmrig::BlockTemplate::parse(bool hashes)
+             return false;
+         }
+     }
+-    else if (m_numOutputs != 1) {
++    else if (m_numOutputs < 1) {
++        // Opacra: the coinbase has a second output (the 5% development fund)
+         return false;
+     }
+ 
+@@ -321,6 +322,26 @@ bool xmrig::BlockTemplate::parse(bool hashes)
+     }
+     else if (m_outputType == 3) {
+         ar(m_viewTag);
++
++        // Opacra: further coinbase outputs (the development fund) - skip them
++        for (uint64_t k = 1; k < m_numOutputs; ++k) {
++            uint64_t amount2;
++            ar(amount2);
++
++            uint8_t output_type2;
++            ar(output_type2);
++            if ((output_type2 != 2) && (output_type2 != 3)) {
++                return false;
++            }
++
++            Span key2;
++            ar(key2, kKeySize);
++
++            if (output_type2 == 3) {
++                uint8_t view_tag2;
++                ar(view_tag2);
++            }
++        }
+     }
+ 
+     if (m_coin == Coin::TOWNFORGE) {
+diff --git a/src/crypto/randomx/randomx.cpp b/src/crypto/randomx/randomx.cpp
+index 688a2d8..eab7ecc 100644
+--- a/src/crypto/randomx/randomx.cpp
++++ b/src/crypto/randomx/randomx.cpp
+@@ -113,6 +113,12 @@ RandomX_ConfigurationSafex::RandomX_ConfigurationSafex()
+ 	ArgonSalt = "RandomSFX\x01";
+ }
+ 
++RandomX_ConfigurationOpacra::RandomX_ConfigurationOpacra()
++{
++	// Opacra: only the salt differs from Monero's rx/0 (external/randomx/OPACRA.md)
++	ArgonSalt = "RandomOPCA\x01";
++}
++
+ RandomX_ConfigurationYada::RandomX_ConfigurationYada()
+ {
+ 	ArgonSalt = "RandomXYadaCoin\x03";
+@@ -388,6 +394,7 @@ RandomX_ConfigurationArqma RandomX_ArqmaConfig;
+ RandomX_ConfigurationGraft RandomX_GraftConfig;
+ RandomX_ConfigurationSafex RandomX_SafexConfig;
+ RandomX_ConfigurationYada RandomX_YadaConfig;
++RandomX_ConfigurationOpacra RandomX_OpacraConfig;
+ 
+ alignas(64) RandomX_ConfigurationBase RandomX_CurrentConfig;
+ 
+diff --git a/src/crypto/randomx/randomx.h b/src/crypto/randomx/randomx.h
+index 51998e2..861242f 100644
+--- a/src/crypto/randomx/randomx.h
++++ b/src/crypto/randomx/randomx.h
+@@ -154,6 +154,7 @@ struct RandomX_ConfigurationArqma : public RandomX_ConfigurationBase { RandomX_C
+ struct RandomX_ConfigurationGraft : public RandomX_ConfigurationBase { RandomX_ConfigurationGraft(); };
+ struct RandomX_ConfigurationSafex : public RandomX_ConfigurationBase { RandomX_ConfigurationSafex(); };
+ struct RandomX_ConfigurationYada : public RandomX_ConfigurationBase { RandomX_ConfigurationYada(); };
++struct RandomX_ConfigurationOpacra : public RandomX_ConfigurationBase { RandomX_ConfigurationOpacra(); };
+ 
+ extern RandomX_ConfigurationMonero RandomX_MoneroConfig;
+ extern RandomX_ConfigurationMoneroV2 RandomX_MoneroConfigV2;
+@@ -162,6 +163,7 @@ extern RandomX_ConfigurationArqma RandomX_ArqmaConfig;
+ extern RandomX_ConfigurationGraft RandomX_GraftConfig;
+ extern RandomX_ConfigurationSafex RandomX_SafexConfig;
+ extern RandomX_ConfigurationYada RandomX_YadaConfig;
++extern RandomX_ConfigurationOpacra RandomX_OpacraConfig;
+ 
+ extern RandomX_ConfigurationBase RandomX_CurrentConfig;
+ 
+diff --git a/src/crypto/rx/RxAlgo.cpp b/src/crypto/rx/RxAlgo.cpp
+index cd52628..43eafe6 100644
+--- a/src/crypto/rx/RxAlgo.cpp
++++ b/src/crypto/rx/RxAlgo.cpp
+@@ -50,6 +50,9 @@ const RandomX_ConfigurationBase *xmrig::RxAlgo::base(Algorithm::Id algorithm)
+     case Algorithm::RX_YADA:
+         return &RandomX_YadaConfig;
+ 
++    case Algorithm::RX_OPCA:
++        return &RandomX_OpacraConfig;
++
+     default:
+         break;
+     }

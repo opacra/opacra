@@ -179,13 +179,10 @@ namespace cryptonote {
     // fund ever spent the decoy before that block arrived, its wallet would ignore the
     // real coinbase output and the coins would be lost. Mixing in the previous block's
     // hash means the key is only known once the block before it exists, when it is too
-    // late for a decoy to arrive first. Mainnet (and regtest) use it from block 1; the
-    // public testnet switches at this height (v0.1.3 is required before it).
-    switch (nettype)
-    {
-      case TESTNET: return 30000;
-      default:      return 1;
-    }
+    // late for a decoy to arrive first. Every network uses it from block 1 (the first public
+    // testnet, which switched at block 30,000, was replaced by testnet 2 on 10 Oct 2026).
+    (void)nettype;
+    return 1;
   }
   //-----------------------------------------------------------------------------------------------
   void get_dev_fund_tx_key(network_type nettype, uint64_t height, const crypto::hash &prev_id, crypto::secret_key &tx_key, crypto::public_key &tx_pub_key)

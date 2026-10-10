@@ -371,7 +371,7 @@ if(NOT MANUAL_SUBMODULES)
     message(STATUS "Checking submodules")
     check_submodule(external/rapidjson)
     check_submodule(external/trezor-common)
-    check_submodule(external/randomx)
+    # Opacra: external/randomx is vendored (own salt, see external/randomx/OPACRA.md), not a submodule
     check_submodule(external/supercop)
   endif()
 endif()
