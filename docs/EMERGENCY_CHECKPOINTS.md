@@ -44,7 +44,7 @@ normal times, and an emergency only means adding one more record.
 Follow it in order, even when it seems obvious. A wrong checkpoint is worse than none:
 enforcing nodes would stall on a block that never comes.
 
-1. **Confirm the attack.** A reorganisation alert, or the explorer and the seed showing
+1. **Confirm the attack.** A "chain rewritten" phone alert (`docs/ALERTS.md`), or the explorer and the seed showing
    blocks being rewritten. Note the height where the chains split.
 2. **Choose the block.** The newest block of the honest chain that both your own nodes
    agree on, at least 5 blocks below the honest tip. Never choose a height at or below a
@@ -63,7 +63,8 @@ enforcing nodes would stall on a block that never comes.
    - Same record on opacra.org and opacra.com. Copy and paste the value; never retype it.
 5. **Check DNS.** From the PC: `dig +short TXT testpoints.opacra.org` and
    `dig +short TXT testpoints.opacra.com` must print the same lines.
-6. **Check the seed** within about 5 minutes:
+6. **Check the seed** within about 5 minutes (the phone also gets "checkpoint now enforced at
+   block H" from the seed's watchdog):
    `journalctl -u opacrad --since "10 min ago" | grep "DNS checkpoint"` shows
    `DNS checkpoint enforced: block H = …`.
 7. **Tell those who need to know**: exchanges, pools, the website and announcement

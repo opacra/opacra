@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Provision an Ubuntu 24.04 server as an Opacra seed node.
 #   scp opacra-v<version>-linux-x64.tar.gz seed-node-setup.sh opacrad.service opacra.conf root@VPS:
-#   ssh root@VPS 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz [mainnet|testnet|stagenet]'
+#   ssh root@VPS 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz [mainnet|testnet|stagenet] [alert topic]'
+# If install-alerts.sh and its files (opacra-alert, opacra-alert.service, opacra-alert.timer)
+# are copied too, phone alerts are set up as well; pass the topic of your other seeds to
+# share one alert feed.
 # Needs: 2+ vCPU, 4 GB RAM, 50+ GB SSD.
 # Opens the network's P2P port (mainnet 29960, testnet 29970, stagenet 29980) if ufw is active.
 set -euo pipefail
 TARBALL=${1:?usage: seed-node-setup.sh <opacra release tarball> [mainnet|testnet|stagenet]}
 NETWORK=${2:-mainnet}
+ALERT_TOPIC=${3:-}
 
 case "$NETWORK" in
   mainnet)  P2P=29960; RPC=29961; ZMQ=29962; NETFLAG="" ;;
@@ -58,3 +62,8 @@ fi
 sleep 5
 /opt/opacra/opacrad --rpc-bind-port "$RPC" status || true
 echo "Opacra $NETWORK seed node running. Logs: journalctl -u opacrad -f  |  /var/lib/opacra/opacra.log"
+if [ -f install-alerts.sh ]; then
+  bash install-alerts.sh "$NETWORK" $ALERT_TOPIC
+else
+  echo "Phone alerts are not set up: copy install-alerts.sh and its files here and run it (docs/ALERTS.md)." >&2
+fi

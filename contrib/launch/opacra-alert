@@ -1,0 +1,403 @@
+#!/usr/bin/python3
+"""Phone alerts for an Opacra seed node, sent as push notifications through ntfy.
+
+Called three ways:
+  opacra-alert reorg SPLIT HEIGHT NEW DISCARDED   by opacrad (reorg-notify)
+  opacra-alert block-rate MINUTES BLOCKS EXPECTED by opacrad (block-rate-notify)
+  opacra-alert watchdog                            every 5 minutes (opacra-alert.timer)
+and by hand:
+  opacra-alert test     send a test notification
+  opacra-alert status   show what the watchdog currently sees
+
+Settings: /etc/opacra/alert.conf (KEY=value lines, written by install-alerts.sh).
+Only the Python standard library is used.
+"""
+
+import fcntl
+import json
+import os
+import re
+import socket
+import sys
+import time
+import urllib.request
+
+CONF = os.environ.get("OPACRA_ALERT_CONF", "/etc/opacra/alert.conf")
+
+DEFAULTS = {
+    "NETWORK": "testnet",
+    "NAME": socket.gethostname().split(".")[0],
+    "NTFY_SERVER": "https://ntfy.sh",
+    "NTFY_TOPIC": "",
+    "RPC": "127.0.0.1:29971",
+    "EXPLORER": "",
+    "LOG_FILE": "/var/lib/opacra/opacra.log",
+    "STATE_DIR": "/var/lib/opacra/alert",
+    "REORG_ALERT_DEPTH": "3",      # normal orphans replace 1 block, rarely 2
+    "REORG_COOLDOWN_MINUTES": "10",  # a deeper reorg is always sent
+    "RATE_COOLDOWN_MINUTES": "60",
+    "STALL_MINUTES": "20",         # 40 blocks expected at 30 s each
+    "DOWN_MINUTES": "10",
+    "NO_PEERS_MINUTES": "15",
+}
+
+
+def load_conf():
+    c = dict(DEFAULTS)
+    try:
+        with open(CONF) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                c[k.strip()] = v.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return c
+
+
+C = load_conf()
+NET = C["NETWORK"]
+WHO = "Opacra %s (%s)" % (NET, C["NAME"])
+
+
+def now():
+    return int(time.time())
+
+
+def minutes(key):
+    return int(C[key]) * 60
+
+
+# ---------------------------------------------------------------- state and log
+
+def state_path(name):
+    return os.path.join(C["STATE_DIR"], name)
+
+
+class State:
+    """JSON state shared by every call, held under an exclusive lock."""
+
+    def __enter__(self):
+        os.makedirs(C["STATE_DIR"], exist_ok=True)
+        self.lock = open(state_path("lock"), "a")
+        fcntl.flock(self.lock, fcntl.LOCK_EX)
+        try:
+            with open(state_path("state.json")) as f:
+                self.d = json.load(f)
+        except (FileNotFoundError, ValueError):
+            self.d = {}
+        return self.d
+
+    def __exit__(self, *exc):
+        tmp = state_path("state.json.tmp")
+        with open(tmp, "w") as f:
+            json.dump(self.d, f, indent=1, sort_keys=True)
+        os.replace(tmp, state_path("state.json"))
+        fcntl.flock(self.lock, fcntl.LOCK_UN)
+        self.lock.close()
+        return False
+
+
+def log(msg):
+    line = "%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg)
+    try:
+        os.makedirs(C["STATE_DIR"], exist_ok=True)
+        with open(state_path("alerts.log"), "a") as f:
+            f.write(line)
+    except OSError:
+        pass
+    sys.stderr.write(line)
+
+
+# ---------------------------------------------------------------- sending
+
+def send(title, body, priority=3, tags="", click=""):
+    """Push one notification. Returns True on success; never raises."""
+    log("ALERT [%s] %s: %s" % (priority, title, body.replace("\n", " ")))
+    if not C["NTFY_TOPIC"]:
+        log("not sent: NTFY_TOPIC is not set in %s" % CONF)
+        return False
+    url = "%s/%s" % (C["NTFY_SERVER"].rstrip("/"), C["NTFY_TOPIC"])
+    headers = {
+        "Title": "%s: %s" % (WHO, title),
+        "Priority": str(priority),
+        "Markdown": "no",
+    }
+    if tags:
+        headers["Tags"] = tags
+    if click:
+        headers["Click"] = click
+    # HTTP headers must be plain ASCII
+    headers = {k: v.encode("ascii", "replace").decode("ascii") for k, v in headers.items()}
+    for attempt in (1, 2):
+        try:
+            req = urllib.request.Request(url, data=body.encode("utf-8"), headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=15) as r:
+                if 200 <= r.status < 300:
+                    return True
+                log("ntfy answered HTTP %s" % r.status)
+        except Exception as e:  # network down, DNS, HTTP error
+            log("sending failed (attempt %d): %s" % (attempt, e))
+        if attempt == 1:
+            time.sleep(5)
+    return False
+
+
+def explorer_block(height):
+    return "%s/block/%s" % (C["EXPLORER"].rstrip("/"), height) if C["EXPLORER"] else ""
+
+
+# ---------------------------------------------------------------- events from opacrad
+
+def on_reorg(split, height, new, discarded):
+    depth = int(discarded)
+    log("reorg at block %s: %s block(s) discarded, %s new, height now %s" % (split, discarded, new, height))
+    if depth < int(C["REORG_ALERT_DEPTH"]):
+        return  # an ordinary orphan block
+    with State() as s:
+        last_t, last_depth = s.get("reorg_alert_time", 0), s.get("reorg_alert_depth", 0)
+        if now() - last_t < minutes("REORG_COOLDOWN_MINUTES") and depth <= last_depth:
+            log("reorg alert held back (cooldown)")
+            return
+        s["reorg_alert_time"], s["reorg_alert_depth"] = now(), depth
+    send("chain rewritten %d blocks deep" % depth,
+         "The seed switched to another chain at block %s: %d block(s) were replaced by %s new one(s), "
+         "height now %s.\n\n"
+         "Ordinary orphan blocks replace 1 block, rarely 2. A deeper rewrite can mean someone with a lot "
+         "of hash power mined in secret (a 51%% attack), or that the network was split and has rejoined.\n\n"
+         "Next: compare the explorer with your own node, then follow docs/EMERGENCY_CHECKPOINTS.md, "
+         "starting at step 1 (confirm the attack)." % (split, depth, new, height),
+         priority=5 if depth >= 10 else 4, tags="rotating_light", click=explorer_block(split))
+
+
+def on_block_rate(window, blocks, expected):
+    window, blocks, expected = int(window), int(blocks), int(expected)
+    fast = blocks > expected
+    log("block rate: %d blocks in %d minutes, %d expected" % (blocks, window, expected))
+    key = "rate_fast_time" if fast else "rate_slow_time"
+    with State() as s:
+        if now() - s.get(key, 0) < minutes("RATE_COOLDOWN_MINUTES"):
+            return  # opacrad repeats this every 90 s while the rate stays unusual
+        s[key] = now()
+    if fast:
+        send("blocks coming much too fast",
+             "%d blocks in the last %d minutes; about %d expected.\n\n"
+             "A lot of hash power has just joined. Harmless if you (or a known big miner) just started "
+             "mining: difficulty catches up within about 30 minutes. Otherwise watch for a chain rewrite "
+             "alert." % (blocks, window, expected), priority=3, tags="warning")
+    else:
+        send("blocks coming much too slowly",
+             "%d blocks in the last %d minutes; about %d expected.\n\n"
+             "Hash power has left the network, or this seed is cut off from it. Harmless if a big miner "
+             "just stopped: difficulty comes down within about 30 minutes." % (blocks, window, expected),
+             priority=3, tags="warning")
+
+
+# ---------------------------------------------------------------- watchdog
+
+def rpc(method, params=None):
+    body = json.dumps({"jsonrpc": "2.0", "id": "0", "method": method, "params": params or {}}).encode()
+    req = urllib.request.Request("http://%s/json_rpc" % C["RPC"], data=body,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        reply = json.loads(r.read().decode())
+    if "result" not in reply:
+        raise RuntimeError(reply.get("error", reply))
+    return reply["result"]
+
+
+LOG_PATTERNS = [
+    ("missing", re.compile(r"Enforcing DNS checkpoints, but none could be read")),
+    ("readable", re.compile(r"DNS checkpoints can be read again")),
+    ("enforced", re.compile(r"DNS checkpoint enforced: block (\d+) = ([0-9a-f]{64})")),
+    ("conflict", re.compile(r"DNS checkpoint at block (\d+) conflicts with an existing checkpoint")),
+]
+
+
+def scan_log(s):
+    """Read the node log written since the last call and return the events found.
+
+    On the first call only the last 5 MB is read, to learn the current state without
+    alerting on old history. Log rotation is noticed by a new inode or a shorter file."""
+    path = C["LOG_FILE"]
+    try:
+        st = os.stat(path)
+    except OSError:
+        return [], False
+    pos = s.get("log_pos", -1)
+    first = pos < 0
+    if first:
+        pos = max(0, st.st_size - 5 * 1024 * 1024)
+    elif s.get("log_inode") != st.st_ino or st.st_size < pos:
+        pos = 0
+    events = []
+    with open(path, "rb") as f:
+        f.seek(pos)
+        data = f.read(50 * 1024 * 1024)
+        # only whole lines; the rest is read next time
+        end = data.rfind(b"\n") + 1
+        for line in data[:end].decode("utf-8", "replace").splitlines():
+            for kind, rx in LOG_PATTERNS:
+                m = rx.search(line)
+                if m:
+                    events.append((kind, m.groups()))
+        s["log_pos"], s["log_inode"] = pos + end, st.st_ino
+    return events, first
+
+
+def condition(s, key, active, since_needed, t, enter, leave):
+    """Track a condition that must hold for since_needed seconds before alerting.
+    Sends enter() once when it starts counting as a problem and leave() once when it clears."""
+    since_key, alerted_key = key + "_since", key + "_alerted"
+    out = []
+    if active:
+        s.setdefault(since_key, t)
+        if not s.get(alerted_key) and t - s[since_key] >= since_needed:
+            s[alerted_key] = True
+            out.append(enter)
+    else:
+        if s.get(alerted_key):
+            out.append(leave)
+        s.pop(since_key, None)
+        s.pop(alerted_key, None)
+    return out
+
+
+def watchdog():
+    t = now()
+    to_send = []
+    with State() as s:
+        try:
+            info = rpc("get_info")
+            up, err = True, ""
+        except Exception as e:
+            info, up, err = {}, False, str(e)
+            s.pop("height", None)  # measure a stall from when the node answers again
+
+        to_send += condition(s, "down", not up, minutes("DOWN_MINUTES"), t,
+            lambda: send("node not answering",
+                         "The node's RPC on %s has not answered for %s minutes (%s).\n\n"
+                         "Check on the seed: systemctl status opacrad, and tail -50 %s"
+                         % (C["RPC"], C["DOWN_MINUTES"], err, C["LOG_FILE"]),
+                         priority=4, tags="red_circle"),
+            lambda: send("node answering again", "The node's RPC answers again.", priority=2,
+                         tags="white_check_mark"))
+
+        if up:
+            height = int(info.get("height", 0))
+            peers = int(info.get("outgoing_connections_count", 0)) + int(info.get("incoming_connections_count", 0))
+            if height != s.get("height"):
+                s["height"], s["height_time"] = height, t
+            s["peers"] = peers
+            stalled_for = t - s.get("height_time", t)
+            to_send += condition(s, "stall", stalled_for >= minutes("STALL_MINUTES"), 0, t,
+                lambda: send("no new block for %d minutes" % (stalled_for // 60),
+                             "Height stuck at %d with %d peer(s) connected.\n\n"
+                             "Every miner may be off (normal on the testnet when your machines stop), this "
+                             "seed may be cut off, or the network stalled after a big miner left."
+                             % (height, peers), priority=3, tags="hourglass"),
+                lambda: send("blocks arriving again", "New blocks again, height %d." % height,
+                             priority=2, tags="white_check_mark"))
+            to_send += condition(s, "nopeers", peers == 0, minutes("NO_PEERS_MINUTES"), t,
+                lambda: send("no peers connected",
+                             "This seed has had no peers for %s minutes, so it cannot see or relay blocks. "
+                             "On the testnet this happens when every home node is off. Otherwise check the "
+                             "server's network and firewall (P2P port)." % C["NO_PEERS_MINUTES"],
+                             priority=3, tags="electric_plug"),
+                lambda: send("peers connected again", "%d peer(s) connected." % peers, priority=2,
+                             tags="white_check_mark"))
+
+        events, first = scan_log(s)
+        for kind, groups in events:
+            if kind == "missing":
+                s["dns_missing"] = True
+            elif kind in ("readable", "enforced"):
+                s["dns_missing"] = False
+            if kind == "enforced":
+                h = int(groups[0])
+                if h != s.get("dns_height"):
+                    if not first and s.get("dns_height") is not None:
+                        to_send.append((lambda h=h, x=groups[1]: send(
+                            "checkpoint now enforced at block %d" % h,
+                            "The seed now refuses any chain without block %d = %s.\n\n"
+                            "If you did not just publish this in DNS, check both domains at once." % (h, x),
+                            priority=4, tags="pushpin", click=explorer_block(h))))
+                    s["dns_height"] = h
+            if kind == "conflict" and not first:
+                to_send.append(lambda g=groups[0]: send(
+                    "DNS checkpoint conflict, node stopping",
+                    "A DNS checkpoint at block %s disagrees with a checkpoint the node already has, so the "
+                    "node stops (and systemd restarts it in a loop). Make both domains show one consistent "
+                    "value; see docs/EMERGENCY_CHECKPOINTS.md, Correcting or removing a checkpoint." % g,
+                    priority=5, tags="rotating_light"))
+        to_send += condition(s, "dns", bool(s.get("dns_missing")), 0, t,
+            lambda: send("emergency checkpoints unreadable",
+                         "This seed enforces DNS checkpoints but cannot read them, so it would not follow an "
+                         "emergency checkpoint. Both domains must answer with the same DNSSEC-valid records. "
+                         "From the PC: dig +short TXT %s.opacra.org and %s.opacra.com must print the same "
+                         "lines." % (("testpoints",) * 2 if NET == "testnet" else ("checkpoints",) * 2),
+                         priority=4, tags="warning"),
+            lambda: send("emergency checkpoints readable again", "DNS checkpoints can be read again.",
+                         priority=2, tags="white_check_mark"))
+        s["watchdog_time"] = t
+    # send outside the lock, so opacrad's own calls never wait on the network
+    for fn in to_send:
+        fn()
+
+
+def status():
+    try:
+        with open(state_path("state.json")) as f:
+            s = json.load(f)
+    except (FileNotFoundError, ValueError):
+        s = {}
+    def ago(key):
+        return "%d min ago" % ((now() - s[key]) // 60) if key in s else "never"
+    print("%s, alerts to %s/%s" % (WHO, C["NTFY_SERVER"], C["NTFY_TOPIC"] or "(no topic set)"))
+    print("last watchdog run: %s" % ago("watchdog_time"))
+    print("height %s (changed %s), peers %s" % (s.get("height", "?"), ago("height_time"), s.get("peers", "?")))
+    print("DNS checkpoints: %s, enforced up to block %s" % ("NOT READABLE" if s.get("dns_missing") else "readable",
+                                                          s.get("dns_height", "?")))
+    active = [k[:-8] for k in s if k.endswith("_alerted") and s[k]]
+    print("problems now: %s" % (", ".join(active) if active else "none"))
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ""
+    if os.geteuid() == 0 and not os.environ.get("OPACRA_ALERT_CONF"):
+        # run by hand as root: switch to the node's user, so state files stay writable by opacrad
+        # (full paths: opacrad starts this script with an empty environment, so no PATH)
+        try:
+            import pwd
+            pwd.getpwnam("opacra")
+            for runuser in ("/usr/sbin/runuser", "/sbin/runuser", "/usr/bin/runuser"):
+                if os.path.exists(runuser):
+                    os.execv(runuser, [runuser, "-u", "opacra", "--", os.path.abspath(argv[0])] + argv[1:])
+        except (KeyError, OSError):
+            pass  # no opacra user or no runuser: carry on as root
+    if cmd == "reorg" and len(argv) == 6:
+        on_reorg(*argv[2:6])
+    elif cmd == "block-rate" and len(argv) == 5:
+        on_block_rate(*argv[2:5])
+    elif cmd == "watchdog":
+        watchdog()
+    elif cmd == "test":
+        ok = send("test alert",
+                  "Alerts from this seed reach you. You will be told about: chain rewrites %s+ blocks deep, "
+                  "unusual block rates, no new block for %s minutes, the node not answering, no peers, and "
+                  "emergency checkpoints that cannot be read." % (C["REORG_ALERT_DEPTH"], C["STALL_MINUTES"]),
+                  priority=3, tags="bell")
+        print("sent" if ok else "NOT sent, see the messages above")
+        return 0 if ok else 1
+    elif cmd == "status":
+        status()
+    else:
+        sys.stderr.write(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

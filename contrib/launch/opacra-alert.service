@@ -1,0 +1,16 @@
+# Runs the Opacra alert watchdog once; started every 5 minutes by opacra-alert.timer.
+[Unit]
+Description=Opacra seed alert watchdog
+After=network-online.target opacrad.service
+
+[Service]
+Type=oneshot
+User=opacra
+Group=opacra
+ExecStart=/usr/local/bin/opacra-alert watchdog
+TimeoutStartSec=120
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/opacra

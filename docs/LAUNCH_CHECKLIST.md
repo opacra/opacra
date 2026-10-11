@@ -63,8 +63,8 @@ python3 coinid.py genesis --reward 2384185791015 \
       and `blocklist_dns_domains` empty until they are needed.
 - [ ] **(security audit item 1)** 51% protection before mainnet: own RandomX variant done
       (RandomOPCA, v0.2.0); DNS checkpoints done (v0.2.1, `docs/EMERGENCY_CHECKPOINTS.md`);
-      still to do: rehearse an emergency checkpoint on the testnet, hard-coded checkpoints in
-      every release, seeds run with `--block-rate-notify` and alerts. See
+      seed alerts done (11 Oct 2026, `docs/ALERTS.md`); still to do: rehearse an emergency
+      checkpoint on the testnet, hard-coded checkpoints in every release. See
       `docs/SECURITY_AUDIT_2026-10.md`.
 - [x] Mainnet and testnet fund wallets created offline and set in `src/cryptonote_config.h`
       (3 Oct 2026). Stagenet still uses a placeholder (stagenet is not run publicly).
@@ -97,12 +97,13 @@ python3 coinid.py genesis --reward 2384185791015 \
 On each Ubuntu 24.04 VPS:
 
 ```bash
-scp dist/opacra-v<version>-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,opacrad.service,opacra.conf} root@SEED:
+scp dist/opacra-v<version>-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,opacrad.service,opacra.conf,install-alerts.sh,opacra-alert,opacra-alert.service,opacra-alert.timer} root@SEED:
 ssh root@SEED 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz'            # mainnet
 ssh root@SEED 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz testnet'    # public testnet
 ```
 
-Edit `/etc/opacra/opacra.conf` on each seed and add the other seeds as
+The first seed prints a phone-alert topic (`docs/ALERTS.md`); give it to the others as a third
+argument so all seeds share one alert feed. Edit `/etc/opacra/opacra.conf` on each seed and add the other seeds as
 `add-priority-node=IP:29960` (testnet: `IP:29970`). Check with `journalctl -u opacrad -f`.
 
 ## 6. Release binaries
@@ -144,7 +145,7 @@ Edit `/etc/opacra/opacra.conf` on each seed and add the other seeds as
    then restart it normally once a peer has caught up.
 3. T: announce "mining is open". The 7-day slow start keeps early blocks small, so
    there is no advantage in being first.
-4. Watch the explorer and `opacrad status` on all seeds. Block times settle after about
+4. Watch the explorer, `opacrad status` on all seeds and the phone alerts. Block times settle after about
    60 blocks (30 minutes).
 5. After ~1 day: post the first hard-coded checkpoint in the next point release
    (`contrib/launch/make_checkpoint.sh <height>`).
