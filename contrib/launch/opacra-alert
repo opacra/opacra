@@ -33,8 +33,9 @@ DEFAULTS = {
     "EXPLORER": "",
     "LOG_FILE": "/var/lib/opacra/opacra.log",
     "STATE_DIR": "/var/lib/opacra/alert",
-    "REORG_ALERT_DEPTH": "3",      # normal orphans replace 1 block, rarely 2
+    "REORG_ALERT_DEPTH": "11",     # mining security plan: only rewrites deeper than 10 blocks
     "REORG_COOLDOWN_MINUTES": "10",  # a deeper reorg is always sent
+    "RATE_PERSIST_MINUTES": "30",  # mining security plan: rate abnormal for 30 minutes
     "RATE_COOLDOWN_MINUTES": "60",
     "STALL_MINUTES": "20",         # 40 blocks expected at 30 s each
     "DOWN_MINUTES": "10",
@@ -165,34 +166,40 @@ def on_reorg(split, height, new, discarded):
     send("chain rewritten %d blocks deep" % depth,
          "The seed switched to another chain at block %s: %d block(s) were replaced by %s new one(s), "
          "height now %s.\n\n"
-         "Ordinary orphan blocks replace 1 block, rarely 2. A deeper rewrite can mean someone with a lot "
+         "Ordinary orphan blocks replace 1 block, rarely 2. A rewrite this deep can mean someone with a lot "
          "of hash power mined in secret (a 51%% attack), or that the network was split and has rejoined.\n\n"
          "Next: compare the explorer with your own node, then follow docs/EMERGENCY_CHECKPOINTS.md, "
          "starting at step 1 (confirm the attack)." % (split, depth, new, height),
-         priority=5 if depth >= 10 else 4, tags="rotating_light", click=explorer_block(split))
+         priority=5, tags="rotating_light", click=explorer_block(split))
 
 
 def on_block_rate(window, blocks, expected):
     window, blocks, expected = int(window), int(blocks), int(expected)
     fast = blocks > expected
     log("block rate: %d blocks in %d minutes, %d expected" % (blocks, window, expected))
-    key = "rate_fast_time" if fast else "rate_slow_time"
+    kind = "fast" if fast else "slow"
+    t = now()
     with State() as s:
-        if now() - s.get(key, 0) < minutes("RATE_COOLDOWN_MINUTES"):
-            return  # opacrad repeats this every 90 s while the rate stays unusual
-        s[key] = now()
+        # opacrad repeats this every 90 s while the rate stays unusual; a gap of more than
+        # 5 minutes means the earlier spell ended
+        if t - s.get("rate_%s_last" % kind, 0) > 300:
+            s["rate_%s_first" % kind] = t
+        s["rate_%s_last" % kind] = t
+        if t - s["rate_%s_first" % kind] < minutes("RATE_PERSIST_MINUTES"):
+            return  # a short spell: the node's own warning in its log is enough
+        if t - s.get("rate_%s_time" % kind, 0) < minutes("RATE_COOLDOWN_MINUTES"):
+            return
+        s["rate_%s_time" % kind] = t
+    seen = "%d blocks in the last %d minutes; about %d expected. Unusual for %s minutes now.\n\n" % (
+        blocks, window, expected, C["RATE_PERSIST_MINUTES"])
     if fast:
-        send("blocks coming much too fast",
-             "%d blocks in the last %d minutes; about %d expected.\n\n"
-             "A lot of hash power has just joined. Harmless if you (or a known big miner) just started "
-             "mining: difficulty catches up within about 30 minutes. Otherwise watch for a chain rewrite "
-             "alert." % (blocks, window, expected), priority=3, tags="warning")
+        send("blocks coming much too fast", seen +
+             "A lot of hash power has joined and stayed. Harmless if you (or a known big miner) just started "
+             "mining. Otherwise watch for a chain rewrite alert.", priority=3, tags="warning")
     else:
-        send("blocks coming much too slowly",
-             "%d blocks in the last %d minutes; about %d expected.\n\n"
+        send("blocks coming much too slowly", seen +
              "Hash power has left the network, or this seed is cut off from it. Harmless if a big miner "
-             "just stopped: difficulty comes down within about 30 minutes." % (blocks, window, expected),
-             priority=3, tags="warning")
+             "just stopped.", priority=3, tags="warning")
 
 
 # ---------------------------------------------------------------- watchdog
@@ -386,8 +393,8 @@ def main(argv):
     elif cmd == "test":
         ok = send("test alert",
                   "Alerts from this seed reach you. You will be told about: chain rewrites %s+ blocks deep, "
-                  "unusual block rates, no new block for %s minutes, the node not answering, no peers, and "
-                  "emergency checkpoints that cannot be read." % (C["REORG_ALERT_DEPTH"], C["STALL_MINUTES"]),
+                  "block rates unusual for %s minutes, no new block for %s minutes, the node not answering, no peers, and "
+                  "emergency checkpoints that cannot be read." % (C["REORG_ALERT_DEPTH"], C["RATE_PERSIST_MINUTES"], C["STALL_MINUTES"]),
                   priority=3, tags="bell")
         print("sent" if ok else "NOT sent, see the messages above")
         return 0 if ok else 1

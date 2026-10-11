@@ -8,8 +8,8 @@ alerts are push notifications.)
 
 | Alert | When | Source |
 |---|---|---|
-| Chain rewritten N blocks deep | A reorganisation replaces 3 or more blocks (ordinary orphans replace 1, rarely 2). Priority high, urgent from 10 blocks. At most one per 10 minutes unless deeper. | `reorg-notify` in opacrad |
-| Blocks coming much too fast / slowly | opacrad's built-in block-rate check finds a rate that should happen only once in 10 days by chance. At most one of each per hour. | `block-rate-notify` in opacrad |
+| Chain rewritten N blocks deep | A reorganisation replaces more than 10 blocks (ordinary orphans replace 1, rarely 2). Urgent. At most one per 10 minutes unless deeper. | `reorg-notify` in opacrad |
+| Blocks coming much too fast / slowly | opacrad's built-in block-rate check (a rate that should happen only once in 10 days by chance) keeps firing for 30 minutes. At most one of each per hour. | `block-rate-notify` in opacrad |
 | No new block for N minutes | The height has not changed for 20 minutes (40 blocks expected). | watchdog |
 | Node not answering | The node's RPC has not answered for 10 minutes. | watchdog |
 | No peers connected | No peers for 15 minutes. | watchdog |
@@ -17,11 +17,16 @@ alerts are push notifications.)
 | Checkpoint now enforced at block N | A new DNS checkpoint took effect: confirms step 6 of `EMERGENCY_CHECKPOINTS.md`, or warns of a change you did not make. | watchdog (node log) |
 | DNS checkpoint conflict | A DNS checkpoint disagrees with one the node has; the node stops. Urgent. | watchdog (node log) |
 
+The thresholds follow the mining security plan's risk review: alerts that cry wolf get
+ignored exactly when they matter, so shallower rewrites and short spells of odd block rates
+are only written to `alerts.log` (and opacrad's own log). Every threshold can be changed in
+`/etc/opacra/alert.conf`.
+
 Watchdog alerts also send one "OK again" message when the problem clears. The watchdog runs
 every 5 minutes (systemd timer `opacra-alert.timer`).
 
-On the testnet, "blocks coming much too fast/slowly", "no new block" and "no peers" are
-expected whenever your own big miner starts or stops, because it is most of the hash power.
+On the testnet, "no new block" and "no peers" are expected when all your own miners are off,
+because they are most of the hash power.
 
 ## Install on a seed
 
@@ -54,7 +59,7 @@ chain data) or send fake ones, so share it only with seed operators. To change i
 
 Two regtest nodes mined separate chains and were then connected: the node's `reorg-notify`
 ran the script (opacrad starts it with an empty environment, as root or as opacra), which
-posted "chain rewritten 5 blocks deep" to a local stand-in for ntfy. Every watchdog alert and
-its recovery message, the cooldowns, the root-to-opacra switch, the notify lines read from a
+posted "chain rewritten" to a local stand-in for ntfy. Every watchdog alert and
+its recovery message, the 11-block and 30-minute thresholds, the cooldowns, the root-to-opacra switch, the notify lines read from a
 config file, and two runs of the installer (same result, one set of lines) were checked the
 same way.
