@@ -86,6 +86,8 @@ python3 coinid.py genesis --reward 2384185791015 \
       `bash seed-node-setup.sh <package> testnet` (P2P port 29970; see section 5).
 - [ ] Invite miners and developers; run the block explorer and pool against testnet.
 - [ ] Run `contrib/testnet/functional_test.py` on the release candidate.
+- [ ] Run `opacra-audit` on a testnet seed before and after the slow start ends (block
+      20,160), and log each result in `docs/CHAIN_AUDIT.md`.
 - [x] Independent AI review of the consensus diff, October 2026 (`docs/REVIEW_2026-10.md`).
 - [ ] Paid human audit of the changed files before mainnet (see `docs/OPACRA_SPEC.md` §5);
       the diff is a few hundred lines.
@@ -147,7 +149,8 @@ argument so all seeds share one alert feed. Edit `/etc/opacra/opacra.conf` on ea
    there is no advantage in being first.
 4. Watch the explorer, `opacrad status` on all seeds and the phone alerts. Block times settle after about
    60 blocks (30 minutes).
-5. After ~1 day: post the first hard-coded checkpoint in the next point release
+5. After ~1 day: run `opacra-audit --rpc 127.0.0.1:29961` on a seed and publish the report;
+   post the first hard-coded checkpoint in the next point release
    (`contrib/launch/make_checkpoint.sh <height>`).
 
 ## 9. After launch

@@ -1,0 +1,581 @@
+#!/usr/bin/python3
+"""Independent audit of an Opacra chain: checks every block against the coin's rules.
+
+Run on a machine with a synced node (normally a seed):
+  opacra-audit                         testnet node on 127.0.0.1:29971, whole chain
+  opacra-audit --rpc 127.0.0.1:29961   mainnet node
+  opacra-audit --to 20160              stop at a given height (default: 10 blocks below the tip)
+  opacra-audit --report audit.txt      also write the report to a file
+
+It recomputes from the published rules, not from the node's code: every block reward
+(emission curve, launch slow start, tail emission), every development fund payment (5% of
+the subsidy, paid to the fund's one-time key and found with the fund's public view key),
+every block's difficulty (LWMA-1), the chain links and the timestamp rule, and the total
+coins created. Only the Python standard library is used, including the Keccak and
+ed25519 arithmetic. Exit status 0 = every check passed, 1 = a check failed, 2 = could not
+run.
+"""
+
+import argparse
+import json
+import sys
+import time
+import urllib.request
+
+# ------------------------------------------------------------ consensus rules (OPACRA_SPEC.md)
+
+COIN = 10 ** 12
+MONEY_SUPPLY = 10_000_000 * COIN
+EMISSION_SPEED_FACTOR = 22
+TAIL_EMISSION = 50_000_000_000            # 0.05 OPCA
+SLOW_START_BLOCKS = 20160
+DEV_FUND_PERCENT = 5
+UNLOCK_WINDOW = 60
+TARGET = 30                               # seconds per block
+LWMA_N = 60
+STARTUP_BLOCKS = 12
+STARTUP_GUESS = 10000
+TIMESTAMP_WINDOW = 11
+FULL_REWARD_ZONE = 75000                  # blocks above this weight may carry a size penalty
+
+# development fund address and published view key per network (src/cryptonote_config.h)
+DEV_FUND = {
+    "mainnet": ("Pa2TDAomGjCM7y1s2S2APLcrGqhkddoyRgsx2Miqu2eRJKLcayF84VPea6SMcSDnxeg78smaG9fBeTpVj5EL1wbU81m8HT6rPW",
+                "69416fd0f64a86d2f3053d9ec1ed072daa83e8970d5fb7c63ab81657834a0101"),
+    "testnet": ("Te1fW4xtitRA7yzFYdkToMJYcxgYdt4BzWswBjAX3HS4CUMFmMEcWScL6QMhoYfYLs4yCR9Cma9Qv31e3eLCF7Du33Wb2ABRJ",
+                "cdf9882d2797df566b2974ee5cc5873c2c97da0addeb8a47018df536858c6f0b"),
+    "stagenet": ("Sa1CJsHUjXFaNSytLRr2h1U3wRxcZi36eimPkSUJ87AuaAEwhhg9UoLh9dYcHczjj97HNVLEGCcwdQ2drVLvk25X7BnkNKWE8F",
+                 "1acfcf08c41616dcf9a14247edf520a4e16430ed4525f544476f2e711bd7600f"),
+}
+DEV_FUND["fakechain"] = DEV_FUND["mainnet"]   # regtest uses the mainnet fund
+DEFAULT_RPC = "127.0.0.1:29971"
+TIP_MARGIN = 10
+
+
+def base_reward(generated):
+    r = (MONEY_SUPPLY - min(generated, MONEY_SUPPLY)) >> EMISSION_SPEED_FACTOR
+    return max(r, TAIL_EMISSION)
+
+
+def slow_start(reward, height):
+    if height == 0 or height >= SLOW_START_BLOCKS:
+        return reward
+    return reward * height // SLOW_START_BLOCKS
+
+
+def dev_fund_share(subsidy, height):
+    return 0 if height == 0 else subsidy * DEV_FUND_PERCENT // 100
+
+
+def lwma(timestamps, cumdiffs):
+    """Difficulty of the next block from the blocks before it (oldest first, genesis excluded)."""
+    timestamps, cumdiffs = timestamps[-(LWMA_N + 1):], cumdiffs[-(LWMA_N + 1):]
+    length = len(timestamps)
+    if length == 0:
+        return 1
+    if length < STARTUP_BLOCKS:
+        return STARTUP_GUESS
+    n = length - 1
+    total, prev = 0, timestamps[0]
+    for i in range(1, n + 1):
+        this = timestamps[i] if timestamps[i] > prev else prev + 1
+        total += i * min(6 * TARGET, this - prev)
+        prev = this
+    total = max(total, n * n * TARGET // 20)
+    d = (cumdiffs[n] - cumdiffs[0]) * TARGET * (n + 1) * 99 // (200 * total)
+    return max(d, 1)
+
+
+# ------------------------------------------------------------ Keccak-256 (Monero's cn_fast_hash)
+
+_RC = [0x0000000000000001, 0x0000000000008082, 0x800000000000808A, 0x8000000080008000,
+       0x000000000000808B, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
+       0x000000000000008A, 0x0000000000000088, 0x0000000080008009, 0x000000008000000A,
+       0x000000008000808B, 0x800000000000008B, 0x8000000000008089, 0x8000000000008003,
+       0x8000000000008002, 0x8000000000000080, 0x000000000000800A, 0x800000008000000A,
+       0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008]
+_ROT = [[0, 36, 3, 41, 18], [1, 44, 10, 45, 2], [62, 6, 43, 15, 61], [28, 55, 25, 21, 56], [27, 20, 39, 8, 14]]
+_M64 = (1 << 64) - 1
+
+
+def _keccak_f(a):
+    for rc in _RC:
+        c = [a[x][0] ^ a[x][1] ^ a[x][2] ^ a[x][3] ^ a[x][4] for x in range(5)]
+        d = [c[(x - 1) % 5] ^ (((c[(x + 1) % 5] << 1) | (c[(x + 1) % 5] >> 63)) & _M64) for x in range(5)]
+        a = [[a[x][y] ^ d[x] for y in range(5)] for x in range(5)]
+        b = [[0] * 5 for _ in range(5)]
+        for x in range(5):
+            for y in range(5):
+                r = _ROT[x][y]
+                v = a[x][y]
+                b[y][(2 * x + 3 * y) % 5] = ((v << r) | (v >> (64 - r))) & _M64 if r else v
+        a = [[b[x][y] ^ ((~b[(x + 1) % 5][y]) & b[(x + 2) % 5][y]) for y in range(5)] for x in range(5)]
+        a[0][0] ^= rc
+    return a
+
+
+def keccak256(data):
+    rate = 136
+    msg = bytearray(data) + b"\x01"
+    msg += b"\x00" * (-len(msg) % rate)
+    msg[-1] |= 0x80
+    a = [[0] * 5 for _ in range(5)]
+    for off in range(0, len(msg), rate):
+        block = msg[off:off + rate]
+        for i in range(rate // 8):
+            a[i % 5][i // 5] ^= int.from_bytes(block[8 * i:8 * i + 8], "little")
+        a = _keccak_f(a)
+    return b"".join(a[i % 5][i // 5].to_bytes(8, "little") for i in range(4))
+
+
+# ------------------------------------------------------------ ed25519 (RFC 8032 arithmetic)
+
+P = 2 ** 255 - 19
+L = 2 ** 252 + 27742317777372353535851937790883648493
+D = -121665 * pow(121666, P - 2, P) % P
+SQRT_M1 = pow(2, (P - 1) // 4, P)
+
+
+def _add(p, q):
+    a = (p[1] - p[0]) * (q[1] - q[0]) % P
+    b = (p[1] + p[0]) * (q[1] + q[0]) % P
+    c = 2 * p[3] * q[3] * D % P
+    d = 2 * p[2] * q[2] % P
+    e, f, g, h = b - a, d - c, d + c, b + a
+    return (e * f % P, g * h % P, f * g % P, e * h % P)
+
+
+_IDENTITY = (0, 1, 1, 0)
+
+
+def _mul(s, p):
+    q = _IDENTITY
+    while s:
+        if s & 1:
+            q = _add(q, p)
+        p = _add(p, p)
+        s >>= 1
+    return q
+
+
+def decompress(b):
+    """A point from its 32-byte encoding, or None if it is not a valid point."""
+    if len(b) != 32:
+        return None
+    y = int.from_bytes(b, "little")
+    sign = y >> 255
+    y &= (1 << 255) - 1
+    if y >= P:
+        return None
+    x2 = (y * y - 1) * pow(D * y * y + 1, P - 2, P) % P
+    if x2 == 0:
+        if sign:
+            return None
+        x = 0
+    else:
+        x = pow(x2, (P + 3) // 8, P)
+        if (x * x - x2) % P:
+            x = x * SQRT_M1 % P
+        if (x * x - x2) % P:
+            return None
+        if (x & 1) != sign:
+            x = P - x
+    return (x, y, 1, x * y % P)
+
+
+def compress(p):
+    zi = pow(p[2], P - 2, P)
+    x, y = p[0] * zi % P, p[1] * zi % P
+    return (y | ((x & 1) << 255)).to_bytes(32, "little")
+
+
+_GY = 4 * pow(5, P - 2, P) % P
+G = decompress(_GY.to_bytes(32, "little"))
+_G_POWERS = []
+_t = G
+for _ in range(256):
+    _G_POWERS.append(_t)
+    _t = _add(_t, _t)
+
+
+def mul_base(s):
+    q = _IDENTITY
+    i = 0
+    while s:
+        if s & 1:
+            q = _add(q, _G_POWERS[i])
+        s >>= 1
+        i += 1
+    return q
+
+
+def hash_to_scalar(data):
+    return int.from_bytes(keccak256(data), "little") % L
+
+
+def varint(n):
+    out = bytearray()
+    while True:
+        b = n & 0x7F
+        n >>= 7
+        if n:
+            out.append(b | 0x80)
+        else:
+            out.append(b)
+            return bytes(out)
+
+
+# ------------------------------------------------------------ Monero base58 addresses
+
+_B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+_B58_BLOCK = {2: 1, 3: 2, 5: 3, 6: 4, 7: 5, 9: 6, 10: 7, 11: 8}
+
+
+def b58decode(s):
+    out = bytearray()
+    for i in range(0, len(s), 11):
+        chunk = s[i:i + 11]
+        n = 0
+        for ch in chunk:
+            n = n * 58 + _B58.index(ch)
+        out += n.to_bytes(_B58_BLOCK[len(chunk)], "big")
+    return bytes(out)
+
+
+def parse_address(addr):
+    raw = b58decode(addr)
+    if keccak256(raw[:-4])[:4] != raw[-4:]:
+        raise ValueError("address checksum does not match")
+    keys = raw[:-4][-64:]
+    return keys[:32], keys[32:]      # spend public key, view public key
+
+
+# ------------------------------------------------------------ node RPC
+
+class Node:
+    def __init__(self, addr):
+        self.addr = addr
+
+    def call(self, method, params=None, path="json_rpc"):
+        if path == "json_rpc":
+            body = {"jsonrpc": "2.0", "id": "0", "method": method, "params": params or {}}
+        else:
+            body = params or {}
+        req = urllib.request.Request("http://%s/%s" % (self.addr, path), data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=120) as r:
+            reply = json.loads(r.read().decode())
+        if path == "json_rpc":
+            if "result" not in reply:
+                raise RuntimeError("%s: %s" % (method, reply.get("error", reply)))
+            reply = reply["result"]
+        if reply.get("status") not in (None, "OK"):
+            raise RuntimeError("%s: status %s" % (method, reply.get("status")))
+        return reply
+
+
+def wide(h, key):
+    """A difficulty from a block header, using the full-width field when present."""
+    w = h.get("wide_" + key)
+    return int(w, 16) if isinstance(w, str) and w.startswith("0x") else int(h[key])
+
+
+def tx_pub_keys(extra):
+    """Transaction public keys (tag 0x01) in a tx extra, in order; None if it can't be parsed."""
+    keys, i, extra = [], 0, bytes(extra)
+    while i < len(extra):
+        tag = extra[i]
+        i += 1
+        if tag == 0x01:
+            if i + 32 > len(extra):
+                return None
+            keys.append(extra[i:i + 32])
+            i += 32
+        elif tag == 0x00:                     # padding runs to the end
+            break
+        elif tag in (0x02, 0x03, 0x04, 0xDE):  # nonce, merge mining, additional keys, minergate: length-prefixed
+            n, shift = 0, 0
+            while True:
+                if i >= len(extra):
+                    return None
+                b = extra[i]
+                i += 1
+                n |= (b & 0x7F) << shift
+                shift += 7
+                if not b & 0x80:
+                    break
+            if tag == 0x04:
+                n *= 32                       # count of 32-byte keys
+            i += n
+        else:
+            return None
+    return keys
+
+
+# ------------------------------------------------------------ the audit
+
+class Audit:
+    def __init__(self, node, net, verbose):
+        self.node, self.net, self.verbose = node, net, verbose
+        addr, view_hex = DEV_FUND[net]
+        self.fund_address = addr
+        spend, view = parse_address(addr)
+        self.view_secret = int.from_bytes(bytes.fromhex(view_hex), "little")
+        self.fund_spend = decompress(spend)
+        if self.view_secret >= L or compress(mul_base(self.view_secret)) != view or self.fund_spend is None:
+            raise ValueError("the published view key does not belong to the %s fund address" % net)
+        self.failures = {}       # check name -> list of messages
+        self.counts = {}         # check name -> blocks checked
+        self.stats = {"txs": 0, "fees": 0, "dev_fund": 0, "penalty_blocks": 0, "max_gap": (0, 0)}
+
+    def check(self, name, ok, height, msg):
+        self.counts[name] = self.counts.get(name, 0) + 1
+        if not ok:
+            self.failures.setdefault(name, []).append("block %d: %s" % (height, msg))
+            if self.verbose:
+                sys.stderr.write("FAIL %s, block %d: %s\n" % (name, height, msg))
+
+    def fees_of(self, tx_hashes):
+        if not tx_hashes:
+            return 0
+        r = self.node.call(None, {"txs_hashes": tx_hashes, "decode_as_json": True}, path="get_transactions")
+        txs = r.get("txs", [])
+        if len(txs) != len(tx_hashes) or r.get("missed_tx"):
+            raise RuntimeError("node did not return every transaction of a block")
+        return sum(int(json.loads(t["as_json"])["rct_signatures"]["txnFee"]) for t in txs)
+
+    def run(self, top):
+        node = self.node
+        generated, cumdiff = 0, 0
+        prev_hash = "0" * 64
+        window_ts, window_cd = [], []        # blocks 1.. (genesis excluded) for LWMA
+        recent_ts = []                       # last TIMESTAMP_WINDOW timestamps, genesis included
+        first_ts = None
+        self.top = top
+        started = time.time()
+        for start in range(0, top + 1, 500):
+            end = min(start + 499, top)
+            headers = node.call("get_block_headers_range", {"start_height": start, "end_height": end})["headers"]
+            if len(headers) != end - start + 1:
+                raise RuntimeError("node returned %d headers for blocks %d-%d" % (len(headers), start, end))
+            for offset, h in enumerate(headers):
+                height = int(h["height"])
+                self.check("chain links", height == start + offset, start + offset, "node returned block %d here" % height)
+                try:
+                    self.audit_block(height, h, prev_hash, generated, cumdiff, window_ts, window_cd, recent_ts)
+                except (KeyError, ValueError, TypeError, IndexError, AttributeError) as e:
+                    self.check("coinbase form", False, height, "block data could not be read (%s: %s)" % (type(e).__name__, e))
+                # carry the chain state forward from the block as the node has it
+                subsidy = slow_start(base_reward(generated), height) if height else int(h["reward"])
+                generated += subsidy
+                cumdiff = wide(h, "cumulative_difficulty")
+                prev_hash = h["hash"]
+                ts = int(h["timestamp"])
+                if height == 0:
+                    first_ts = None
+                else:
+                    if first_ts is None:
+                        first_ts = ts
+                    else:
+                        gap = ts - self.last_ts
+                        if gap > self.stats["max_gap"][0]:
+                            self.stats["max_gap"] = (gap, height)
+                    self.last_ts = ts
+                    window_ts.append(ts)
+                    window_cd.append(cumdiff)
+                    del window_ts[:-(LWMA_N + 1)], window_cd[:-(LWMA_N + 1)]
+                recent_ts.append(ts)
+                del recent_ts[:-TIMESTAMP_WINDOW]
+                self.last_header = h
+            if self.verbose:
+                sys.stderr.write("checked blocks 0-%d (%.0f s)\n" % (end, time.time() - started))
+        self.generated, self.first_ts = generated, first_ts
+
+        # the node's own total, as a cross-check of the running sum
+        s = node.call("get_coinbase_tx_sum", {"height": 0, "count": top + 1})
+        node_emission = int(s["wide_emission_amount"], 16) if "wide_emission_amount" in s else int(s["emission_amount"])
+        node_fees = int(s["wide_fee_amount"], 16) if "wide_fee_amount" in s else int(s["fee_amount"])
+        self.node_emission = node_emission
+        self.check("total coins created", node_emission == generated, top,
+                   "node reports %s, the rules give %s" % (fmt(node_emission), fmt(generated)))
+        self.check("total coins created", node_fees == self.stats["fees"], top,
+                   "node reports fees of %s, the blocks hold %s" % (fmt(node_fees), fmt(self.stats["fees"])))
+
+    def audit_block(self, height, h, prev_hash, generated, cumdiff, window_ts, window_cd, recent_ts):
+        node = self.node
+        # chain links
+        self.check("chain links", h["prev_hash"] == prev_hash, height, "previous hash does not link")
+        diff = wide(h, "difficulty")
+        self.check("chain links", wide(h, "cumulative_difficulty") == cumdiff + diff, height,
+                   "cumulative difficulty is not the previous total plus this block's")
+        # timestamp rule: not below the median of the previous 11 blocks
+        if height >= TIMESTAMP_WINDOW:
+            med = sorted(recent_ts)[TIMESTAMP_WINDOW // 2]
+            self.check("timestamps", int(h["timestamp"]) >= med, height,
+                       "timestamp %s is below the median %d of the previous 11 blocks" % (h["timestamp"], med))
+        # difficulty
+        if self.net != "fakechain":
+            expected = lwma(window_ts, window_cd)
+            if height == 1 and self.net != "testnet":
+                expected = STARTUP_GUESS
+            if height > 0:
+                self.check("difficulty", diff == expected, height, "difficulty %d, LWMA gives %d" % (diff, expected))
+
+        blk = node.call("get_block", {"height": height})
+        bj = json.loads(blk["json"])
+        tx = bj["miner_tx"]
+        outs = tx["vout"]
+        amounts = [int(o["amount"]) for o in outs]
+        total = sum(amounts)
+        self.check("coinbase form", tx["vin"][0]["gen"]["height"] == height and len(tx["vin"]) == 1, height,
+                   "coinbase input does not name this height")
+        if height == 0:
+            self.check("block rewards", total == MONEY_SUPPLY >> EMISSION_SPEED_FACTOR, height,
+                       "genesis pays %s" % fmt(total))
+            return
+        self.check("coinbase form", int(tx["unlock_time"]) == height + UNLOCK_WINDOW, height,
+                   "unlock time %s, should be %d" % (tx["unlock_time"], height + UNLOCK_WINDOW))
+        self.check("coinbase form", tx.get("rct_signatures", {}).get("type", 0) == 0, height,
+                   "coinbase carries RingCT data")
+        self.check("coinbase form", int(h["reward"]) == total, height, "header reward differs from the coinbase outputs")
+
+        # reward: the emission curve with the slow start, plus fees
+        tx_hashes = bj.get("tx_hashes", [])
+        self.check("coinbase form", len(tx_hashes) == int(h["num_txes"]), height, "transaction count differs")
+        fees = self.fees_of(tx_hashes)
+        self.stats["txs"] += len(tx_hashes)
+        self.stats["fees"] += fees
+        subsidy = slow_start(base_reward(generated), height)
+        weight = int(h.get("block_weight", 0))
+        if weight > FULL_REWARD_ZONE:
+            # possible size penalty; it depends on the median block weight, so check the bounds only
+            self.stats["penalty_blocks"] += 1
+            self.check("block rewards", fees <= total <= subsidy + fees, height,
+                       "pays %s, more than reward %s + fees %s" % (fmt(total), fmt(subsidy), fmt(fees)))
+            self.check("block rewards", height >= SLOW_START_BLOCKS, height,
+                       "block above %d bytes during the slow start" % FULL_REWARD_ZONE)
+        else:
+            self.check("block rewards", total == subsidy + fees, height,
+                       "pays %s, rules give %s + fees %s" % (fmt(total), fmt(subsidy), fmt(fees)))
+
+        # development fund: last output, exactly 5% of the subsidy, to the fund's one-time key
+        fund = dev_fund_share(subsidy, height)
+        idx = len(outs) - 1
+        fund_out = outs[idx]
+        self.check("development fund", len(outs) >= 2 and amounts[idx] == fund, height,
+                   "last output pays %s, should be %s" % (fmt(amounts[idx]), fmt(fund)))
+        target = fund_out.get("target", {})
+        tagged = target.get("tagged_key")
+        if not tagged:
+            self.check("development fund", False, height, "fund output has no view tag")
+            return
+        keys = tx_pub_keys(tx["extra"])
+        prev = bytes.fromhex(h["prev_hash"])
+        r = hash_to_scalar(b"OpacraDevFund" + height.to_bytes(8, "little") + prev)
+        r_pub = compress(mul_base(r))
+        self.check("development fund", keys is not None and len(keys) == 2 and keys[1] == r_pub
+                   and keys[0] != r_pub and decompress(keys[0]) is not None, height,
+                   "transaction keys must be exactly [miner's key, fund key]")
+        # find the output the way the fund's wallet does: with the published view key
+        R = decompress(r_pub)
+        derivation = compress(_mul(8, _mul(self.view_secret, R)))
+        s = hash_to_scalar(derivation + varint(idx))
+        expected_key = compress(_add(mul_base(s), self.fund_spend))
+        tag = keccak256(b"view_tag" + derivation + varint(idx))[0]
+        self.check("development fund", bytes.fromhex(tagged["key"]) == expected_key, height,
+                   "fund output key is not the fund's one-time key")
+        self.check("development fund", int(tagged["view_tag"], 16) == tag, height, "fund output view tag is wrong")
+        self.stats["dev_fund"] += amounts[idx]
+
+
+def fmt(atomic):
+    return "%.12f OPCA" % (atomic / COIN) if atomic < COIN else "{:,.6f} OPCA".format(atomic / COIN)
+
+
+def report(a, net, node_info, seconds):
+    lines = []
+    now = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
+    lines.append("Opacra chain audit: %s, blocks 0 to %d, %s" % (net, a.top, now))
+    lines.append("")
+    descriptions = [
+        ("chain links", "every block links to the one before, cumulative difficulty adds up"),
+        ("timestamps", "no block is timed before the median of the 11 before it"),
+        ("difficulty", "every block's difficulty matches LWMA-1, recomputed independently"),
+        ("coinbase form", "coinbase height, 60-block lock, no RingCT, totals match the header"),
+        ("block rewards", "every block pays exactly the emission-curve reward (with slow start) plus its fees"),
+        ("development fund", "every block pays the fund exactly 5%, to its one-time key, found with the public view key"),
+        ("total coins created", "the node's own total matches the sum of the rules"),
+    ]
+    failed = 0
+    for name, what in descriptions:
+        if name not in a.counts:
+            if name == "difficulty" and net == "fakechain":
+                lines.append("SKIP  %-19s fixed difficulty on regtest" % name)
+            continue
+        bad = a.failures.get(name, [])
+        failed += len(bad)
+        lines.append("%s  %-19s %s" % ("FAIL" if bad else "PASS", name, what))
+        for m in bad[:10]:
+            lines.append("        %s" % m)
+        if len(bad) > 10:
+            lines.append("        ... and %d more" % (len(bad) - 10))
+    lines.append("")
+    ramp = min(a.top + 1, SLOW_START_BLOCKS) * 100.0 / SLOW_START_BLOCKS
+    span = (a.last_ts - a.first_ts) if a.first_ts is not None and a.top > 1 else 0
+    lines.append("Coins created:        %s (genesis included)" % fmt(a.generated))
+    lines.append("Development fund:     %s" % fmt(a.stats["dev_fund"]))
+    lines.append("Fees paid:            %s in %d transaction(s)" % (fmt(a.stats["fees"]), a.stats["txs"]))
+    lines.append("Next block reward:    %s (slow start %s)" % (
+        fmt(slow_start(base_reward(a.generated), a.top + 1)),
+        "finished" if a.top + 1 >= SLOW_START_BLOCKS else "at %.1f%%, full from block %d" % (ramp, SLOW_START_BLOCKS)))
+    if a.top > 1:
+        lines.append("Average block time:   %.1f s over %d blocks (target %d s)" % (span / (a.top - 1), a.top - 1, TARGET))
+        lines.append("Longest gap:          %d min %d s, before block %d" % (a.stats["max_gap"][0] // 60,
+                                                                         a.stats["max_gap"][0] % 60, a.stats["max_gap"][1]))
+    lines.append("Difficulty now:       %d" % wide(a.last_header, "difficulty"))
+    if a.stats["penalty_blocks"]:
+        lines.append("Blocks over 75 kB:    %d (reward checked within bounds only)" % a.stats["penalty_blocks"])
+    lines.append("Fund address:         %s" % a.fund_address)
+    lines.append("Node:                 %s, top block %s" % (node_info.get("version", "?"), a.last_header["hash"]))
+    lines.append("")
+    lines.append("RESULT: %s (%.0f s)" % ("ALL CHECKS PASSED" if not failed else "%d PROBLEM(S) FOUND" % failed, seconds))
+    return "\n".join(lines) + "\n", failed
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--rpc", default=DEFAULT_RPC, help="node RPC address (default %(default)s, the testnet)")
+    ap.add_argument("--to", type=int, help="last block to check (default: 10 blocks below the node's top block)")
+    ap.add_argument("--report", help="also write the report to this file")
+    ap.add_argument("--quiet", action="store_true", help="no progress lines")
+    args = ap.parse_args()
+    node = Node(args.rpc)
+    try:
+        info = node.call("get_info")
+        net = info.get("nettype") or ("testnet" if info.get("testnet") else "mainnet")
+        if net not in DEV_FUND:
+            raise RuntimeError("unknown network %r" % net)
+        if info.get("busy_syncing") or (info.get("target_height", 0) > info.get("height", 0)):
+            sys.stderr.write("warning: the node is still syncing; checking the blocks it has\n")
+        # stay 10 blocks below the tip: a block replaced while the audit runs would look like a broken link
+        top = int(info["height"]) - 1 - TIP_MARGIN
+        if args.to is not None:
+            top = min(top, args.to)
+        if top < 1:
+            raise RuntimeError("the chain is too short to audit")
+        a = Audit(node, net, not args.quiet)
+        started = time.time()
+        a.run(top)
+    except Exception as e:
+        sys.stderr.write("could not complete the audit: %s\n" % e)
+        return 2
+    text, failed = report(a, net, info, time.time() - started)
+    sys.stdout.write(text)
+    if args.report:
+        with open(args.report, "w") as f:
+            f.write(text)
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
