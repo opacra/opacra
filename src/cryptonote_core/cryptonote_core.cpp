@@ -1615,6 +1615,10 @@ namespace cryptonote
     m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));
     m_block_rate_interval.do_call(boost::bind(&core::check_block_rate, this));
+    // Opacra: emergency checkpoints are re-read on a timer, not only when a peer relays a block
+    // (Monero's only trigger), so a node that mines most blocks itself, or sees no new blocks
+    // during an attack, still picks them up. update_checkpoints() keeps its own timers.
+    update_checkpoints();
     m_blockchain_pruning_interval.do_call(boost::bind(&core::update_blockchain_pruning, this));
     m_diff_recalc_interval.do_call(boost::bind(&core::recalculate_difficulties, this));
     m_miner.on_idle();
