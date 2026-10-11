@@ -23,11 +23,11 @@ fund-key change below).
 | 5 | Low | A block refused only for being too far in the future could be resent endlessly without penalty, each time costing a RandomX check | Fixed in v0.1.3 |
 | 6 | Info | 30-second blocks: more orphans, and a 60-block (30-minute) coinbase lock | Documented |
 
-## 1. Shared RandomX hash power (open)
+## 1. Shared RandomX hash power (partly fixed)
 
-Opacra's RandomX is configured exactly as Monero's (`external/randomx/src/configuration.h`,
-`RANDOMX_ARGON_SALT "RandomX\x03"`, XMRig's `rx/0`). Every Monero miner, pool and hash-rate
-rental market can point at Opacra without changing anything. The testnet runs at about
+Before v0.2.0, Opacra's RandomX was configured exactly as Monero's (`external/randomx/src/configuration.h`,
+`RANDOMX_ARGON_SALT "RandomX\x03"`, XMRig's `rx/0`); v0.2.0 gave it its own salt (point 5 below). At that time every Monero miner, pool and hash-rate
+rental market could point at Opacra without changing anything. The testnet runs at about
 2 kH/s, and even a successful mainnet will be a tiny fraction of Monero's. In August 2025
 the Qubic pool claimed a majority of Monero's own hash rate and reorganised several Monero
 blocks ([The Block](https://www.theblock.co/post/366535/monero-faces-chain-reorganization-fears-after-qubic-says-it-controls-51-of-hashrate),
@@ -204,3 +204,33 @@ checked proof of work once.
   - the lookback included the fixed startup blocks for six hours;
   - the weekly difficulty recheck needed the block-1 rule too (found while fixing the
     first problem).
+
+## Follow-up review of v0.2.0 and v0.2.1 (11 Oct 2026)
+
+Two independent reviewers, who had not seen the changes being written, checked v0.2.0
+(RandomOPCA, testnet 2, Opacra XMRig) and v0.2.1 (DNS emergency checkpoints). No critical
+or high findings. Fixed in v0.2.2:
+
+| Severity | Finding | Fix |
+|---|---|---|
+| Medium | XMRig and libuv were cloned by tag only; a moved tag would change the signed miner | `build-xmrig.sh` checks the exact commits and always clones libuv fresh |
+| Medium | The Windows "Start testnet mining" launcher ran commands hidden in a pasted address (`&`, `|`) | The saved address must be letters and digits only, and is quoted with delayed expansion |
+| Medium | An enforcing seed that could not read DNS checkpoints said so only at log level 1 | A red warning once, and a notice when reading works again |
+| Low | `m_checkpoints` was changed without the blockchain lock while block validation reads it (inherited from Monero, more frequent with the 5-minute timer) | DNS read without a lock, list changed under the tx-pool and blockchain locks |
+| Low | Two DNS records with different hashes for one height loaded half the set | The whole set is ignored and logged |
+| Low | The DNS lookup ran in the block-relay path | Only the idle timer refreshes checkpoints |
+| Low | The launcher's `(it starts with Te)` closed its `if` block early, so it asked for the address every time | Rewritten without brackets |
+| Low | Testnet config-file and libwallet ringdb defaults still said `testnet` | `testnet2` |
+| Info | The XMRig coinbase relaxation applied to every coin | Limited to `--coin opacra` |
+| Info | The XMRig donation-level edit was not checked | The build stops if it did not apply |
+
+Documented rather than changed: testnet 2 keeps the testnet exemption from the block-1
+startup difficulty (its block 1 was mined under it); enforcing nodes keep a DNS checkpoint
+until restart, and a hash changed in place stops them (`docs/EMERGENCY_CHECKPOINTS.md`); both
+DNS zones are in one registrar account (second registrar planned before mainnet). Checked
+and sound: the vendored RandomX is byte-identical to upstream 6c4340b apart from the salt;
+XMRig's salt matches the node's; mainnet and stagenet identity unchanged; the fund-key
+binding is applied identically in every path; non-enforcing nodes only warn; peers cannot
+influence DNS checkpoints; the testnet checkpoint at block 2000 matches the chain (the
+enforcing seed and the PC run past it without a rollback).
+

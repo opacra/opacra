@@ -44,7 +44,7 @@ namespace daemon_args
   , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
   , [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
       if (testnet_stagenet[0] && defaulted)
-        return (daemonizer::get_default_data_dir() / "testnet" /
+        return (daemonizer::get_default_data_dir() / "testnet2" /
                 std::string(CRYPTONOTE_NAME ".conf")).string();
       else if (testnet_stagenet[1] && defaulted)
         return (daemonizer::get_default_data_dir() / "stagenet" /
@@ -59,7 +59,7 @@ namespace daemon_args
   , {{ &cryptonote::arg_testnet_on, &cryptonote::arg_stagenet_on }}
   , [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
       if (testnet_stagenet[0] && defaulted)
-        return (daemonizer::get_default_data_dir() / "testnet" /
+        return (daemonizer::get_default_data_dir() / "testnet2" /
                 std::string(CRYPTONOTE_NAME ".log")).string();
       else if (testnet_stagenet[1] && defaulted)
         return (daemonizer::get_default_data_dir() / "stagenet" /

@@ -101,7 +101,7 @@ static inline uint64_t add_generated_coins(uint64_t generated, uint64_t reward)
 //------------------------------------------------------------------
 Blockchain::Blockchain(tx_memory_pool& tx_pool) :
   m_db(), m_tx_pool(tx_pool), m_hardfork(NULL), m_timestamps_and_difficulties_height(0), m_reset_timestamps_and_difficulties_height(true), m_current_block_cumul_weight_limit(0), m_current_block_cumul_weight_median(0),
-  m_enforce_dns_checkpoints(false), m_last_logged_dns_checkpoint(0), m_max_prepare_blocks_threads(4), m_db_sync_on_blocks(true), m_db_sync_threshold(1), m_db_sync_mode(db_async), m_db_default_sync(false), m_fast_sync(true), m_show_time_stats(false), m_sync_counter(0), m_bytes_to_sync(0), m_cancel(false),
+  m_enforce_dns_checkpoints(false), m_last_logged_dns_checkpoint(0), m_dns_checkpoints_missing(false), m_max_prepare_blocks_threads(4), m_db_sync_on_blocks(true), m_db_sync_threshold(1), m_db_sync_mode(db_async), m_db_default_sync(false), m_fast_sync(true), m_show_time_stats(false), m_sync_counter(0), m_bytes_to_sync(0), m_cancel(false),
   m_long_term_block_weights_window(CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE),
   m_long_term_effective_median_block_weight(0),
   m_long_term_block_weights_cache_tip_hash(crypto::null_hash),
@@ -945,7 +945,8 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   size_t target = get_difficulty_target();
   difficulty_type diff = next_difficulty(timestamps, difficulties, target);
   // Opacra (security audit): block 1 costs the startup guess, not 1, so no height near
-  // genesis is free (the public testnet's existing block 1 keeps difficulty 1)
+  // genesis is free. The public testnet is exempt: testnet 2's block 1 (10 Oct 2026) was
+  // mined at difficulty 1 under this rule, so removing the exemption would split it.
   if (timestamps.empty() && height == 1 && m_nettype != TESTNET)
     diff = DIFFICULTY_STARTUP_GUESS;
 
@@ -4953,19 +4954,31 @@ void Blockchain::check_against_checkpoints(const checkpoints& points, bool enfor
 // with an existing checkpoint.
 bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns)
 {
+  // Opacra: read DNS first, holding no lock (a lookup can take seconds), and accept only a
+  // consistent set: two records for one height with different hashes make the whole set
+  // unusable instead of half-loaded.
+  const bool read_dns = check_dns && !m_offline;
+  checkpoints dns_points;
+  if (read_dns && !dns_points.load_checkpoints_from_dns(m_nettype))
+  {
+    MERROR("DNS checkpoint records contradict each other (two hashes for one height); ignoring all of them");
+    dns_points = checkpoints();
+  }
+
+  // Block validation reads m_checkpoints under these locks; change it only while holding
+  // them, taken in the same order as add_new_block (Monero changed it without a lock).
+  CRITICAL_REGION_LOCAL(m_tx_pool);
+  CRITICAL_REGION_LOCAL1(m_blockchain_lock);
+
   if (!m_checkpoints.load_checkpoints_from_json(file_path))
   {
       return false;
   }
 
-  // if we're checking both dns and json, load checkpoints from dns.
-  // if we're not hard-enforcing dns checkpoints, handle accordingly
-  if (m_enforce_dns_checkpoints && check_dns && !m_offline)
+  if (read_dns && m_enforce_dns_checkpoints)
   {
-    // one DNS read, then each checkpoint is added to the node's own list (add_checkpoint
-    // refuses one that conflicts with a hard-coded checkpoint, as Monero's code did)
-    checkpoints dns_points;
-    dns_points.load_checkpoints_from_dns(m_nettype);
+    // each DNS checkpoint joins the node's own list; add_checkpoint refuses one that
+    // conflicts with a hard-coded or earlier checkpoint, and the node then stops (as in Monero)
     for (const auto &pt : dns_points.get_points())
     {
       if (!m_checkpoints.add_checkpoint(pt.first, epee::string_tools::pod_to_hex(pt.second)))
@@ -4974,18 +4987,32 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
         return false;
       }
     }
-    // Opacra: say once in the log when a new emergency checkpoint takes effect
-    if (!dns_points.get_points().empty() && dns_points.get_max_height() != m_last_logged_dns_checkpoint)
+    if (dns_points.get_points().empty())
     {
-      m_last_logged_dns_checkpoint = dns_points.get_max_height();
-      MGINFO_YELLOW("DNS checkpoint enforced: block " << m_last_logged_dns_checkpoint << " = "
-        << dns_points.get_points().rbegin()->second << " (" << dns_points.get_points().size() << " DNS checkpoint(s))");
+      // a node that enforces checkpoints must say plainly when it cannot read them
+      if (!m_dns_checkpoints_missing)
+      {
+        m_dns_checkpoints_missing = true;
+        MCLOG_RED(el::Level::Warning, "global", "Enforcing DNS checkpoints, but none could be read. Both domains must "
+          "answer with the same DNSSEC-valid records: check that DNS is reachable from this server and the records exist.");
+      }
+    }
+    else
+    {
+      if (m_dns_checkpoints_missing)
+        MGINFO("DNS checkpoints can be read again");
+      m_dns_checkpoints_missing = false;
+      // say once in the log when a new emergency checkpoint takes effect
+      if (dns_points.get_max_height() != m_last_logged_dns_checkpoint)
+      {
+        m_last_logged_dns_checkpoint = dns_points.get_max_height();
+        MGINFO_YELLOW("DNS checkpoint enforced: block " << m_last_logged_dns_checkpoint << " = "
+          << dns_points.get_points().rbegin()->second << " (" << dns_points.get_points().size() << " DNS checkpoint(s))");
+      }
     }
   }
-  else if (check_dns && !m_offline)
+  else if (read_dns)
   {
-    checkpoints dns_points;
-    dns_points.load_checkpoints_from_dns(m_nettype);
     if (!dns_points.get_points().empty() && dns_points.get_max_height() != m_last_logged_dns_checkpoint)
     {
       m_last_logged_dns_checkpoint = dns_points.get_max_height();

@@ -240,6 +240,7 @@ namespace cryptonote
               m_update_available(false)
   {
     m_checkpoints_updating.clear();
+    m_checkpoints_async = false;
     set_cryptonote_protocol(pprotocol);
   }
   void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol)
@@ -281,9 +282,23 @@ namespace cryptonote
     bool res = true;
     if (!skip_dns && time(NULL) - m_last_dns_checkpoints_update >= coin_network::dns_checkpoint_refresh_seconds)
     {
-      res = m_blockchain_storage.update_checkpoints(m_checkpoints_path, true);
       m_last_dns_checkpoints_update = time(NULL);
       m_last_json_checkpoints_update = time(NULL);
+      if (m_checkpoints_async)
+      {
+        // the previous read has finished (it cleared the flag we just set); reap it, then read
+        // on a fresh thread, which clears the flag itself when done
+        if (m_checkpoints_thread.joinable())
+          m_checkpoints_thread.join();
+        m_checkpoints_thread = boost::thread([this]() {
+          const bool r = m_blockchain_storage.update_checkpoints(m_checkpoints_path, true);
+          m_checkpoints_updating.clear();
+          if (!r)
+            graceful_exit();
+        });
+        return true;
+      }
+      res = m_blockchain_storage.update_checkpoints(m_checkpoints_path, true);
     }
     else if (time(NULL) - m_last_json_checkpoints_update >= 600)
     {
@@ -704,6 +719,7 @@ namespace cryptonote
     // with respect to what blocks we already have
     const bool skip_dns_checkpoints = !command_line::get_arg(vm, arg_dns_checkpoints);
     CHECK_AND_ASSERT_MES(update_checkpoints(skip_dns_checkpoints), false, "One or more checkpoints loaded from json or dns conflicted with existing checkpoints.");
+    m_checkpoints_async = true; // from now on DNS reads never block the caller
 
    // DNS versions checking
     if (check_updates_string == "disabled" || not allow_dns)
@@ -755,6 +771,9 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
     bool core::deinit()
   {
+    // a DNS checkpoint read may still be running; it uses the blockchain, so wait for it
+    if (m_checkpoints_thread.joinable())
+      m_checkpoints_thread.join();
     m_miner.stop();
     m_mempool.deinit();
     m_blockchain_storage.deinit();
@@ -1864,9 +1883,9 @@ namespace cryptonote
   bool core::recalculate_difficulties()
   {
     // Opacra: Monero rescans from its last difficulty checkpoint to repair a
-    // historical bug. Opacra has no such history and no difficulty checkpoints, so
-    // a full rescan would start at genesis and hold the chain lock longer every
-    // week. Recheck only the last week of blocks.
+    // historical bug. Opacra has no such history (and only a few testnet difficulty
+    // checkpoints), so a full rescan would start near genesis and hold the chain lock
+    // longer every week. Recheck only the last week of blocks.
     const uint64_t height = m_blockchain_storage.get_current_blockchain_height();
     const uint64_t window = SLOW_START_BLOCKS; // 20,160 blocks = 7 days
     if (height > window + 1)

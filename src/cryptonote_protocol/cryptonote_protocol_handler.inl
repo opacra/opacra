@@ -751,9 +751,8 @@ namespace cryptonote
       MLOG_PEER_STATE("requesting chain");
     }
 
-    // load json & DNS checkpoints every 10min/hour respectively,
-    // and verify them with respect to what blocks we already have
-    CHECK_AND_ASSERT_MES(m_core.update_checkpoints(), 1, "One or more checkpoints loaded from json or dns conflicted with existing checkpoints.");
+    // Opacra: checkpoints are refreshed by core::on_idle on a timer. Monero refreshed them here,
+    // which put a DNS lookup (up to the resolver timeout) in the path of relaying a new block.
 
     return 1;
   }  

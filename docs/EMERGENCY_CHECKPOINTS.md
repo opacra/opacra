@@ -73,11 +73,29 @@ enforcing nodes would stall on a block that never comes.
    is widely run, remove the emergency record from both domains at the same time, keeping
    the standing record.
 
+## Correcting or removing a checkpoint
+
+Enforcing nodes keep every DNS checkpoint they have read until they restart, so:
+
+- **To remove one**, delete the record from both domains, then restart the enforcing
+  nodes (seed: `systemctl restart opacrad`). Until they restart they keep enforcing it.
+- **Never change the hash of a published height in place.** Enforcing nodes treat the new
+  hash as a conflict and shut down (and restart in a loop under systemd) until both domains
+  show one consistent value. To correct a wrong checkpoint, remove it from both domains,
+  restart the enforcing nodes, then publish the right block at a different height.
+- While you edit, the two domains differ for a minute or two. Nodes log "no majority of DNS
+  TXT records matched" and ignore both until they agree again; that is expected.
+- An enforcing node that cannot read any checkpoint (DNS blocked, DNSSEC not validated,
+  records missing) logs a red warning once, and "DNS checkpoints can be read again" when it
+  recovers. Check for that warning after every seed install.
+
 ## Rules
 
 - Change both domains together, with the same values. While they differ, every node
   ignores them, which is the safe failure.
 - Never publish a height at or below a hard-coded checkpoint with a different hash.
 - The registrar account controls this power: two-factor login, the project email only,
-  backup codes offline. Treat it like the release signing key.
+  backup codes offline. Treat it like the release signing key. Both zones are currently in
+  one account; moving opacra.com to a second registrar would remove that single point of
+  failure (planned before mainnet).
 - Rehearse on the testnet before mainnet (mining security plan, Phase 2).

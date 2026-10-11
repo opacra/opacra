@@ -224,6 +224,13 @@ Network and wallet:
     enforced; "no two valid TXT records" is logged at level 1 instead of 0. Seeds enforce
     them (`enforce-dns-checkpointing=1`). Testnet 2 has hard-coded checkpoints at blocks 0
     and 2000. Procedure: `docs/EMERGENCY_CHECKPOINTS.md`.
+    v0.2.2: `core::on_idle` refreshes checkpoints on a timer (DNS reads on their own thread
+    after start-up) and the call in the block-relay
+    path (`handle_notify_new_fluffy_block`) is removed; `Blockchain::update_checkpoints` reads
+    DNS without a lock, then changes `m_checkpoints` under the tx-pool and blockchain locks
+    (Monero changed it unlocked); a DNS set with two hashes for one height is ignored whole;
+    an enforcing node warns once when no checkpoint can be read. The testnet config-file and
+    libwallet ringdb defaults also use `testnet2`.
 
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,

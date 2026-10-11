@@ -1231,6 +1231,8 @@ namespace cryptonote
     bool m_enforce_dns_checkpoints;
     // Opacra: highest DNS checkpoint height last reported in the log (0 = none yet)
     uint64_t m_last_logged_dns_checkpoint;
+    // Opacra: an enforcing node has already warned that no DNS checkpoint could be read
+    bool m_dns_checkpoints_missing;
 
     HardFork *m_hardfork;
 

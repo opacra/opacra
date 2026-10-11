@@ -81,7 +81,7 @@ index c3c97fd..8d0c343 100644
      };
  
 diff --git a/src/base/tools/cryptonote/BlockTemplate.cpp b/src/base/tools/cryptonote/BlockTemplate.cpp
-index 5493336..89e3bff 100644
+index 5493336..d8e4d81 100644
 --- a/src/base/tools/cryptonote/BlockTemplate.cpp
 +++ b/src/base/tools/cryptonote/BlockTemplate.cpp
 @@ -263,7 +263,8 @@ bool xmrig::BlockTemplate::parse(bool hashes)
@@ -89,8 +89,8 @@ index 5493336..89e3bff 100644
          }
      }
 -    else if (m_numOutputs != 1) {
-+    else if (m_numOutputs < 1) {
-+        // Opacra: the coinbase has a second output (the 5% development fund)
++    else if ((m_coin == Coin::OPACRA) ? (m_numOutputs < 1) : (m_numOutputs != 1)) {
++        // Opacra: the coinbase has a second output (the 5% development fund); other coins unchanged
          return false;
      }
  
@@ -100,7 +100,7 @@ index 5493336..89e3bff 100644
          ar(m_viewTag);
 +
 +        // Opacra: further coinbase outputs (the development fund) - skip them
-+        for (uint64_t k = 1; k < m_numOutputs; ++k) {
++        for (uint64_t k = 1; (m_coin == Coin::OPACRA) && (k < m_numOutputs); ++k) {
 +            uint64_t amount2;
 +            ar(amount2);
 +

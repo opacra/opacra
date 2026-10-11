@@ -10,6 +10,10 @@ a fixed difficulty of 3,000, using XMRig 6.26.0 with `contrib/xmrig/opacra-xmrig
 | `-a rx/0 --coin monero` (Monero's algorithm) | 10 | 0, all refused: "does not have enough proof of work" |
 | `-a rx/opca --coin opacra` (Opacra build) | 17 | 17 (height 1 to 18) |
 
+v0.2.2 (11 Oct 2026, after the follow-up review): the patch now limits the two-output coinbase
+handling to `--coin opacra`, and the build pins XMRig and libuv to exact commits. Same test,
+90 s each: `rx/0` added no blocks; `rx/opca` mined 12 blocks (height 1 to 13), all accepted.
+
 The older results below are for v0.1.x, which used Monero's `rx/0`.
 
 

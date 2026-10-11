@@ -11,6 +11,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 XMRIG_TAG=v6.26.0
+# pinned commits: a moved tag upstream would otherwise change what we build and sign
+XMRIG_COMMIT=b2ca72480c58d197e18c885d9fc1a0c8d517e60a
+UV_TAG=v1.51.0
+UV_COMMIT=5152db2cbfeb5582e9c27c5ea1dba2cd9e10759b
 OPACRA_VERSION="$(grep -o 'DEF_MONERO_VERSION "[0-9.]*"' src/version.cpp.in | head -1 | cut -d'"' -f2)"
 JOBS="${JOBS:-$(nproc)}"
 WORK="$ROOT/build/xmrig"
@@ -29,11 +33,14 @@ sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw3
 echo "== 2/4 source"
 rm -rf "$WORK/src"
 git clone -q --depth 1 --branch "$XMRIG_TAG" https://github.com/xmrig/xmrig "$WORK/src"
+[ "$(git -C "$WORK/src" rev-parse HEAD)" = "$XMRIG_COMMIT" ] || { echo "XMRig $XMRIG_TAG is not commit $XMRIG_COMMIT: stopping" >&2; exit 1; }
 git -C "$WORK/src" apply "$ROOT/contrib/xmrig/opacra-xmrig.patch"
 # donation level 0 by default: Opacra's build doesn't send miners' hash power to XMRig's authors
 sed -i 's/constexpr const int kDefaultDonateLevel = 1;/constexpr const int kDefaultDonateLevel = 0;/; s/constexpr const int kMinimumDonateLevel = 1;/constexpr const int kMinimumDonateLevel = 0;/' "$WORK/src/src/donate.h"
-UV_TAG=v1.51.0
-[ -d "$WORK/libuv" ] || git clone -q --depth 1 --branch "$UV_TAG" https://github.com/libuv/libuv "$WORK/libuv"
+grep -q 'kDefaultDonateLevel = 0;' "$WORK/src/src/donate.h" && grep -q 'kMinimumDonateLevel = 0;' "$WORK/src/src/donate.h" || { echo "could not set the donation level to 0: stopping" >&2; exit 1; }
+rm -rf "$WORK/libuv"
+git clone -q --depth 1 --branch "$UV_TAG" https://github.com/libuv/libuv "$WORK/libuv"
+[ "$(git -C "$WORK/libuv" rev-parse HEAD)" = "$UV_COMMIT" ] || { echo "libuv $UV_TAG is not commit $UV_COMMIT: stopping" >&2; exit 1; }
 
 COMMON=(-DCMAKE_BUILD_TYPE=Release -DWITH_OPENCL=OFF -DWITH_CUDA=OFF -DWITH_KAWPOW=OFF -DWITH_GHOSTRIDER=OFF)
 
@@ -88,16 +95,22 @@ mkdir -p "$STAGE/$NAME-win-x64"
 cp "$WORK/win/xmrig.exe" "$WORK/src/LICENSE" "$STAGE/$NAME-win-x64/"
 cat > "$STAGE/$NAME-win-x64/Start testnet mining.bat" <<'BAT'
 @echo off
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 title Opacra XMRig (testnet)
-if not exist address.txt (
-  echo Paste your Opacra testnet wallet address (it starts with Te) and press Enter:
-  set /p ADDR=
-  call echo %%ADDR%%> address.txt
-)
-set /p ADDR=<address.txt
-echo Mining to %ADDR% through your own node on this computer (start the node first).
-xmrig.exe -o 127.0.0.1:29971 --daemon -a rx/opca --coin opacra -u %ADDR%
+rem The saved address is checked before every use: only letters and digits are accepted,
+rem so nothing pasted with it can run as a command. No pipes here: they lose delayed expansion.
+if exist address.txt goto check
+:ask
+set "ADDR="
+set /p "ADDR=Paste your Opacra testnet wallet address, it starts with Te, and press Enter: "
+> address.txt echo(!ADDR!
+:check
+findstr /r /x "T[0-9A-Za-z]*" address.txt >nul || (del address.txt & echo That is not an Opacra testnet address. & goto ask)
+set "ADDR="
+set /p "ADDR=" < address.txt
+echo Mining to !ADDR! through your own node on this computer. Start the node first.
+xmrig.exe -o 127.0.0.1:29971 --daemon -a rx/opca --coin opacra -u "!ADDR!"
 pause
 BAT
 cat > "$STAGE/$NAME-win-x64/README.txt" <<TXT

@@ -35,6 +35,7 @@
 #include <boost/function.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
+#include <boost/thread/thread.hpp>
 
 #include "cryptonote_basic/fwd.h"
 #include "cryptonote_core/i_core_events.h"
@@ -1105,6 +1106,11 @@ namespace cryptonote
      time_t m_last_json_checkpoints_update; //!< time when json checkpoints were last updated
 
      std::atomic_flag m_checkpoints_updating; //!< set if checkpoints are currently updating to avoid multiple threads attempting to update at once
+     // Opacra: after start-up, DNS checkpoint reads run on their own thread, so a slow or
+     // blocked resolver (75 s per read in a test with DNS unreachable) never stalls the
+     // p2p idle loop that calls update_checkpoints()
+     boost::thread m_checkpoints_thread;
+     bool m_checkpoints_async;
      bool m_disable_dns_checkpoints;
 
      size_t block_sync_size;
