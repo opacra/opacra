@@ -46,63 +46,93 @@ for b in opacrad opacra-wallet-cli opacra-wallet-rpc; do
   x86_64-w64-mingw32-strip "$STAGE/$b.exe"
 done
 cp LICENSE "$STAGE/"
-# Double-click launchers: opacrad.exe started by double-click joins mainnet, which has not launched
-cat > "$STAGE/Start testnet node.bat" <<'BAT'
+# Double-click launchers. opacrad.exe started by double-click would join mainnet, which has
+# not launched; "Start Opacra testnet" does everything a tester needs in one window.
+cat > "$STAGE/Start Opacra testnet.bat" <<'BAT'
 @echo off
+setlocal EnableExtensions
 cd /d "%~dp0"
-title Opacra testnet node
-echo Opacra testnet node. Leave this window open; type  status  and press Enter to check it.
+title Opacra testnet
+if exist testnet-wallet.address.txt goto start
 echo.
-opacrad.exe --testnet
+echo  Welcome to the Opacra testnet. First, a wallet for the coins you mine.
+echo  Choose a password and type it twice. Then write down the 25 words it shows:
+echo  they are the only way to restore this wallet. Never share them.
+echo.
+opacra-wallet-cli.exe --testnet --offline --generate-new-wallet testnet-wallet --mnemonic-language English --create-address-file --command address
+if not exist testnet-wallet.address.txt goto failed
+echo.
+echo  Wallet ready. Written the 25 words down? Press any key to start mining.
+pause >nul
+:start
+set /p ADDR=<testnet-wallet.address.txt
+set /a THREADS=%NUMBER_OF_PROCESSORS%/2
+if %THREADS% LSS 1 set THREADS=1
+cls
+echo.
+echo  Opacra testnet: joining the network and mining with %THREADS% threads to your wallet
+echo  %ADDR%
+echo.
+echo  Leave this window open while you mine; close it to stop. Mining starts once the
+echo  node has caught up, usually within a few minutes. Type  status  and press Enter
+echo  to check. To see your coins, double-click "Open testnet wallet".
+echo.
+opacrad.exe --testnet --start-mining %ADDR% --mining-threads %THREADS%
+pause
+exit /b
+:failed
+echo.
+echo  The wallet was not created. Close this window and double-click "Start Opacra testnet" again.
 pause
 BAT
-cat > "$STAGE/Start testnet wallet.bat" <<'BAT'
+cat > "$STAGE/Open testnet wallet.bat" <<'BAT'
 @echo off
+setlocal EnableExtensions
 cd /d "%~dp0"
 title Opacra testnet wallet
-if exist mywallet.keys (
-  opacra-wallet-cli.exe --testnet --wallet-file mywallet
-) else (
-  echo No wallet yet: creating one called mywallet.
-  echo.
-  opacra-wallet-cli.exe --testnet --generate-new-wallet mywallet
-)
+if exist testnet-wallet.keys goto open
+echo  No wallet yet: double-click "Start Opacra testnet" first.
+pause
+exit /b
+:open
+echo  Type your wallet password. If it asks about background mining, type N: you are
+echo  already mining in the other window. Useful commands: balance, address,
+echo  transfer ADDRESS AMOUNT, exit. Keep "Start Opacra testnet" running alongside.
+echo.
+opacra-wallet-cli.exe --testnet --wallet-file testnet-wallet
 pause
 BAT
 cat > "$STAGE/README.txt" <<TXT
 Opacra v$VERSION for Windows (64-bit)
 
-  Start testnet node.bat     double-click: runs a testnet node (and miner)
-  Start testnet wallet.bat   double-click: opens your testnet wallet, or creates one
+Join the public testnet (testnet coins have no value):
+
+  1. Unzip this folder.
+  2. Double-click "Start Opacra testnet". Allow it through Windows Firewall if asked.
+     The first time it creates your wallet: choose a password and write down the 25
+     words it shows. Then it joins the network and mines. Leave the window open.
+  3. To see your coins or send some, double-click "Open testnet wallet" and type
+     balance   or   transfer ADDRESS AMOUNT
+     Mined coins unlock after 60 blocks (about 30 minutes).
+
+Files:
+  Start Opacra testnet.bat   wallet (first time), node and miner in one window
+  Open testnet wallet.bat    your testnet wallet
   opacrad.exe                full node and miner
   opacra-wallet-cli.exe      command-line wallet
   opacra-wallet-rpc.exe      wallet JSON-RPC server
 
-Join the public testnet (testnet coins have no value):
-
-  1. Unzip this folder.
-  2. Double-click "Start testnet node". Allow it through Windows Firewall if asked.
-     Leave the window open. It finds the network by itself; type  status  and press
-     Enter until it shows 100.0%.
-  3. Double-click "Start testnet wallet". The first time it creates a wallet called
-     mywallet: choose a password, pick a language (1 = English), and answer  N  when
-     it asks about background mining. Keep the 25 words it shows somewhere safe: they
-     restore the wallet. Never share them.
-  4. In the wallet, mine with 2 CPU threads:   start_mining 2
-     and check your earnings with:             balance
-     Mined coins unlock after 60 blocks (about 30 minutes).
-     If the wallet says "Password needed (output received)", type  refresh  and enter
-     your password: it is asking to unlock newly received coins.
-
 Do not start opacrad.exe by double-clicking it: without --testnet it joins mainnet,
 which has not launched yet.
 
-Windows may warn that the program is from an unknown publisher: the files are not
-code-signed. Check the download against the signed checksums on https://opacra.org.
-Block explorer: https://explorer.opacra.org
+The programs are not code-signed yet. Windows may say it protected your PC: choose
+More info, then Run anyway. On some newer Windows 11 PCs, Smart App Control blocks
+unsigned programs completely ("Part of this app has been blocked"); the testnet cannot
+run on such a PC until releases are signed. Check the download against the signed
+checksums on https://opacra.org. Block explorer: https://explorer.opacra.org
 TXT
 # Windows line endings for the files people open in Notepad or run as batch files
-sed -i 's/$/\r/' "$STAGE/README.txt" "$STAGE/Start testnet node.bat" "$STAGE/Start testnet wallet.bat"
+sed -i 's/$/\r/' "$STAGE/README.txt" "$STAGE/Start Opacra testnet.bat" "$STAGE/Open testnet wallet.bat"
 (cd "$STAGE" && sha256sum *.exe > SHA256SUMS)
 (cd "$(dirname "$STAGE")" && rm -f "$ROOT/dist/$NAME.zip" && zip -qr "$ROOT/dist/$NAME.zip" "$NAME")
 (cd dist && sha256sum "$NAME.zip" | tee "$NAME.zip.sha256")

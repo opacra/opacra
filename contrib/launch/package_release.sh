@@ -22,10 +22,14 @@ cp "$BUILD_DIR/bin/opacrad" "$BUILD_DIR/bin/opacra-wallet-cli" "$BUILD_DIR/bin/o
 strip "$STAGE/$BIN_DIR/"* 2>/dev/null || true
 cp -r contrib/launch "$STAGE/$BIN_DIR/launch-kit"
 rm -f "$STAGE/$BIN_DIR/launch-kit/package_release.sh"
+# testers start here: one script does libraries, wallet and mining
+mv "$STAGE/$BIN_DIR/launch-kit/start-testnet.sh" "$STAGE/$BIN_DIR/launch-kit/open-wallet.sh" "$STAGE/$BIN_DIR/"
 cp LICENSE "$STAGE/$BIN_DIR/"
 cat > "$STAGE/$BIN_DIR/README.txt" <<EOF
 Opacra v$VERSION - Linux x86_64 binaries (built on Ubuntu 24.04, dynamically linked)
 
+  start-testnet.sh    join the public testnet: installs libraries, creates your wallet, mines
+  open-wallet.sh      your testnet wallet (balance, transfer)
   opacrad             full node / miner
   opacra-wallet-cli   command-line wallet
   opacra-wallet-rpc   wallet JSON-RPC server (same API as monero-wallet-rpc)
