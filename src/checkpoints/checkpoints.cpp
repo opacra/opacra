@@ -190,6 +190,9 @@ namespace cryptonote
     // or the helper script contrib/launch/make_checkpoint.sh.
     if (nettype == TESTNET)
     {
+      // testnet 2 (from 10 Oct 2026), read from the PC's node on 11 Oct 2026
+      ADD_CHECKPOINT2(0, "4ee1bdcec38cdd06ba40f9f0def2d6a260acfeb853fedd4de9fb40cc5b0562cf", "0x1");
+      ADD_CHECKPOINT2(2000, "9d484e6d15883cb1241d91ea6a23e94be03003ad373a9a03ac9e3c1000aa36f2", "0x85a95d1");
       return true;
     }
     if (nettype == STAGENET)

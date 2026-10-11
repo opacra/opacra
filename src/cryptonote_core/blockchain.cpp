@@ -101,7 +101,7 @@ static inline uint64_t add_generated_coins(uint64_t generated, uint64_t reward)
 //------------------------------------------------------------------
 Blockchain::Blockchain(tx_memory_pool& tx_pool) :
   m_db(), m_tx_pool(tx_pool), m_hardfork(NULL), m_timestamps_and_difficulties_height(0), m_reset_timestamps_and_difficulties_height(true), m_current_block_cumul_weight_limit(0), m_current_block_cumul_weight_median(0),
-  m_enforce_dns_checkpoints(false), m_max_prepare_blocks_threads(4), m_db_sync_on_blocks(true), m_db_sync_threshold(1), m_db_sync_mode(db_async), m_db_default_sync(false), m_fast_sync(true), m_show_time_stats(false), m_sync_counter(0), m_bytes_to_sync(0), m_cancel(false),
+  m_enforce_dns_checkpoints(false), m_last_logged_dns_checkpoint(0), m_max_prepare_blocks_threads(4), m_db_sync_on_blocks(true), m_db_sync_threshold(1), m_db_sync_mode(db_async), m_db_default_sync(false), m_fast_sync(true), m_show_time_stats(false), m_sync_counter(0), m_bytes_to_sync(0), m_cancel(false),
   m_long_term_block_weights_window(CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE),
   m_long_term_effective_median_block_weight(0),
   m_long_term_block_weights_cache_tip_hash(crypto::null_hash),
@@ -4962,15 +4962,36 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
   // if we're not hard-enforcing dns checkpoints, handle accordingly
   if (m_enforce_dns_checkpoints && check_dns && !m_offline)
   {
-    if (!m_checkpoints.load_checkpoints_from_dns())
+    // one DNS read, then each checkpoint is added to the node's own list (add_checkpoint
+    // refuses one that conflicts with a hard-coded checkpoint, as Monero's code did)
+    checkpoints dns_points;
+    dns_points.load_checkpoints_from_dns(m_nettype);
+    for (const auto &pt : dns_points.get_points())
     {
-      return false;
+      if (!m_checkpoints.add_checkpoint(pt.first, epee::string_tools::pod_to_hex(pt.second)))
+      {
+        MERROR("DNS checkpoint at block " << pt.first << " conflicts with an existing checkpoint");
+        return false;
+      }
+    }
+    // Opacra: say once in the log when a new emergency checkpoint takes effect
+    if (!dns_points.get_points().empty() && dns_points.get_max_height() != m_last_logged_dns_checkpoint)
+    {
+      m_last_logged_dns_checkpoint = dns_points.get_max_height();
+      MGINFO_YELLOW("DNS checkpoint enforced: block " << m_last_logged_dns_checkpoint << " = "
+        << dns_points.get_points().rbegin()->second << " (" << dns_points.get_points().size() << " DNS checkpoint(s))");
     }
   }
   else if (check_dns && !m_offline)
   {
     checkpoints dns_points;
-    dns_points.load_checkpoints_from_dns();
+    dns_points.load_checkpoints_from_dns(m_nettype);
+    if (!dns_points.get_points().empty() && dns_points.get_max_height() != m_last_logged_dns_checkpoint)
+    {
+      m_last_logged_dns_checkpoint = dns_points.get_max_height();
+      MGINFO("DNS checkpoint read (not enforced): block " << m_last_logged_dns_checkpoint << " = "
+        << dns_points.get_points().rbegin()->second);
+    }
     if (m_checkpoints.check_for_conflicts(dns_points))
     {
       check_against_checkpoints(dns_points, false);

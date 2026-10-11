@@ -22,6 +22,8 @@
 #include "string_tools.h"
 #include "int-util.h"
 #include "randomx.h"
+#include "checkpoints/checkpoints.h"
+#include "coin_network.h"
 
 using cryptonote::difficulty_type;
 
@@ -435,6 +437,37 @@ static void test_hardforks_and_identity()
   EXPECT_EQ(DIFFICULTY_TARGET_V2, 30);
 }
 
+static void test_checkpoints()
+{
+  // the hard-coded testnet-2 genesis checkpoint is the genesis block this build generates
+  cryptonote::block genesis;
+  EXPECT(cryptonote::generate_genesis_block(genesis, config::testnet::GENESIS_TX, config::testnet::GENESIS_NONCE));
+  const crypto::hash gh = cryptonote::get_block_hash(genesis);
+  std::printf("testnet genesis: %s\n", epee::string_tools::pod_to_hex(gh).c_str());
+  cryptonote::checkpoints cp;
+  EXPECT(cp.init_default_checkpoints(cryptonote::TESTNET));
+  EXPECT(cp.check_block(0, gh));
+  EXPECT_EQ(cp.get_max_height(), (uint64_t)2000);
+  // a different block at a checkpointed height is refused; side blocks at or below it too
+  crypto::hash other = gh; other.data[0] ^= 1;
+  EXPECT(!cp.check_block(0, other));
+  EXPECT(!cp.is_alternative_block_allowed(2100, 2000));
+  EXPECT(cp.is_alternative_block_allowed(2100, 2001));
+  // DNS checkpoints: two domains on two separate zones per public network, so both must agree
+  for (auto n: { cryptonote::MAINNET, cryptonote::TESTNET })
+  {
+    const auto d = coin_network::checkpoint_dns_domains(n);
+    EXPECT_EQ(d.size(), (size_t)2);
+    if (d.size() == 2)
+    {
+      EXPECT(d[0].substr(d[0].find('.')) == ".opacra.org");
+      EXPECT(d[1].substr(d[1].find('.')) == ".opacra.com");
+    }
+  }
+  EXPECT(coin_network::checkpoint_dns_domains(cryptonote::TESTNET) != coin_network::checkpoint_dns_domains(cryptonote::MAINNET));
+  EXPECT(coin_network::dns_checkpoint_refresh_seconds <= 600);
+}
+
 int main()
 {
   test_emission();
@@ -444,6 +477,7 @@ int main()
   test_dev_fund();
   test_hardforks_and_identity();
   test_randomx_variant();
+  test_checkpoints();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

@@ -37,6 +37,7 @@ using namespace epee;
 
 #include <unordered_set>
 #include "cryptonote_core.h"
+#include "coin_network.h"
 #include "common/util.h"
 #include "common/updates.h"
 #include "common/download.h"
@@ -270,12 +271,15 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
   bool core::update_checkpoints(const bool skip_dns /* = false */)
   {
-    if (m_nettype != MAINNET || m_disable_dns_checkpoints) return true;
+    // Opacra: DNS checkpoints work on every network that lists checkpoint domains in
+    // coin_network.h (mainnet and the public testnet), not only mainnet as in Monero, so the
+    // emergency-checkpoint procedure can be rehearsed on the testnet.
+    if (m_nettype == FAKECHAIN || m_disable_dns_checkpoints) return true;
 
     if (m_checkpoints_updating.test_and_set()) return true;
 
     bool res = true;
-    if (!skip_dns && time(NULL) - m_last_dns_checkpoints_update >= 3600)
+    if (!skip_dns && time(NULL) - m_last_dns_checkpoints_update >= coin_network::dns_checkpoint_refresh_seconds)
     {
       res = m_blockchain_storage.update_checkpoints(m_checkpoints_path, true);
       m_last_dns_checkpoints_update = time(NULL);

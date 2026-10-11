@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include "cryptonote_config.h"
@@ -53,18 +54,28 @@ namespace coin_network
   inline std::vector<std::string> tor_seed_nodes() { return {}; }
   inline std::vector<std::string> i2p_seed_nodes() { return {}; }
 
-  // DNSSEC-signed TXT records "height:hash" used for emergency checkpoints.
-  // Leave empty until you control DNSSEC-enabled domains.
+  // DNSSEC-signed TXT records "height:hash" used for emergency checkpoints (MoneroPulse-style).
+  // A checkpoint counts only when every domain listed publishes exactly the same set of records
+  // and each answer passes DNSSEC validation (tools::dns_utils::load_txt_records_from_dns needs
+  // agreement from more than half of the domains, and with two that means both). The domains
+  // are on two separate zones (opacra.org, opacra.com) in a dedicated, 2FA-protected registrar
+  // account. Ordinary nodes only warn when their chain disagrees with a DNS checkpoint; nodes
+  // started with --enforce-dns-checkpointing (seeds, exchanges) refuse to reorganise below it.
   inline std::vector<std::string> checkpoint_dns_domains(cryptonote::network_type nettype)
   {
     switch (nettype)
     {
-      case cryptonote::MAINNET:  return {};
-      case cryptonote::TESTNET:  return {};
+      case cryptonote::MAINNET:  return {"checkpoints.opacra.org", "checkpoints.opacra.com"};
+      case cryptonote::TESTNET:  return {"testpoints.opacra.org", "testpoints.opacra.com"};
       case cryptonote::STAGENET: return {};
       default:                   return {};
     }
   }
+
+  // How often a running node re-reads the DNS checkpoints, in seconds. Monero uses an hour;
+  // Opacra's 30-second blocks make an hour 120 blocks, so emergency checkpoints are read every
+  // 5 minutes. Two small TXT lookups per node every 5 minutes are negligible.
+  constexpr int64_t dns_checkpoint_refresh_seconds = 300;
 
   // DNSSEC-signed TXT records announcing releases "<software>:<buildtag>:<version>:<sha256>"
   inline std::vector<std::string> update_dns_domains() { return {}; }

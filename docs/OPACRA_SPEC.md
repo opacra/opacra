@@ -216,6 +216,14 @@ Network and wallet:
     Opacra unchanged (security audit item 1). Reference vector: key "test key 000", input
     "This is a test" → `460b9dbac09aa34bd64b275599f95195d2cd2eaf3dd6eb0b1e2631d9d3e7cafc`
     (Monero: `639183aa…`). XMRig needs `contrib/xmrig/opacra-xmrig.patch` (`rx/opca`).
+23. DNS emergency checkpoints (v0.2.1, node policy, not consensus): `coin_network.h` lists
+    `checkpoints.opacra.org`/`.com` (mainnet) and `testpoints.opacra.org`/`.com` (testnet);
+    `core::update_checkpoints` reads them on every network that lists domains (Monero:
+    mainnet only) every 5 minutes (Monero: hourly), passing the network type through
+    `Blockchain::update_checkpoints`. The log says once when a new DNS checkpoint is read or
+    enforced; "no two valid TXT records" is logged at level 1 instead of 0. Seeds enforce
+    them (`enforce-dns-checkpointing=1`). Testnet 2 has hard-coded checkpoints at blocks 0
+    and 2000. Procedure: `docs/EMERGENCY_CHECKPOINTS.md`.
 
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,
