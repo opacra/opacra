@@ -3377,6 +3377,7 @@ simple_wallet::simple_wallet()
   , m_auto_refresh_enabled(false)
   , m_auto_refresh_refreshing(false)
   , m_in_manual_refresh(false)
+  , m_password_hint_shown(false)
   , m_current_subaddress_account(0)
   , m_last_activity_time(time(NULL))
   , m_locked(false)
@@ -5923,10 +5924,18 @@ boost::optional<epee::wipeable_string> simple_wallet::on_get_password(const char
   // can't ask for password from a background thread
   if (!m_in_manual_refresh.load(std::memory_order_relaxed))
   {
-    message_writer(console_color_red, false) << boost::format(tr("Password needed (%s) - use the refresh command")) % reason;
-    m_cmd_binder.print_prompt();
+    // Opacra: say it once, in plain words, instead of on every background refresh (testers
+    // saw dozens of red lines and typed their password at the command prompt)
+    if (!m_password_hint_shown.exchange(true))
+    {
+      message_writer(console_color_yellow, false) << tr("New coins have arrived. To record them the wallet needs your password: "
+        "type  refresh  and press Enter, then type your password when the wallet asks for it. "
+        "Never type your password after the [wallet ...]: prompt.");
+      m_cmd_binder.print_prompt();
+    }
     return boost::none;
   }
+  m_password_hint_shown.store(false);
 
   PAUSE_READLINE();
   std::string msg = tr("Enter password");

@@ -154,6 +154,11 @@ argument so all seeds share one alert feed. Edit `/etc/opacra/opacra.conf` on ea
    (`contrib/launch/make_checkpoint.sh <height>`).
 
 ## 9. After launch
+- [ ] Watch outside changes the coin depends on, and ship updates before they bite: root DNSSEC
+      keys (IANA root-anchors.xml; KSK-2024 took over on 11 Oct 2026), the Ubuntu and Windows
+      versions the releases target, Windows signing rules. See `docs/LESSONS_LEARNED.md`.
+- [ ] Monthly: on each seed, `DNS checkpoint enforced` is the newest checkpoint line in the log
+      (`docs/EMERGENCY_CHECKPOINTS.md`, Keep it ready), and `opacra-audit` passes.
 
 - [ ] Add a checkpoint every few thousand blocks in each release.
 - [ ] List on miningpoolstats.stream as soon as a pool is running.

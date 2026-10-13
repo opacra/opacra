@@ -4994,7 +4994,8 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
       {
         m_dns_checkpoints_missing = true;
         MCLOG_RED(el::Level::Warning, "global", "Enforcing DNS checkpoints, but none could be read. Both domains must "
-          "answer with the same DNSSEC-valid records: check that DNS is reachable from this server and the records exist.");
+          "answer with the same DNSSEC-valid records: check that DNS is reachable from this server and the records exist. "
+          "If they do, the node may need an update (for example a new root DNS key): see docs/EMERGENCY_CHECKPOINTS.md.");
       }
     }
     else

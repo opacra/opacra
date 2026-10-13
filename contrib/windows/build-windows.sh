@@ -66,7 +66,11 @@ echo  Wallet ready. Written the 25 words down? Press any key to start mining.
 pause >nul
 :start
 set /p ADDR=<testnet-wallet.address.txt
-set /a THREADS=%NUMBER_OF_PROCESSORS%/2
+rem To choose how many CPU threads mine, put a number after the = sign on the next line,
+rem for example  set MINE_THREADS=4  . Leave it empty to use a quarter of this PC's threads.
+set MINE_THREADS=
+if "%MINE_THREADS%"=="" set /a MINE_THREADS=%NUMBER_OF_PROCESSORS%/4
+set /a THREADS=%MINE_THREADS%
 if %THREADS% LSS 1 set THREADS=1
 cls
 echo.
@@ -76,6 +80,7 @@ echo.
 echo  Leave this window open while you mine; close it to stop. Mining starts once the
 echo  node has caught up, usually within a few minutes. Type  status  and press Enter
 echo  to check. To see your coins, double-click "Open testnet wallet".
+echo  To mine with more or fewer threads, see README.txt.
 echo.
 opacrad.exe --testnet --start-mining %ADDR% --mining-threads %THREADS%
 pause
@@ -98,6 +103,8 @@ exit /b
 echo  Type your wallet password. If it asks about background mining, type N: you are
 echo  already mining in the other window. Useful commands: balance, address,
 echo  transfer ADDRESS AMOUNT, exit. Keep "Start Opacra testnet" running alongside.
+echo  When it says new coins have arrived, type  refresh  and enter your password when
+echo  the wallet asks for it. Never type the password after the [wallet ...]: prompt.
 echo.
 opacra-wallet-cli.exe --testnet --wallet-file testnet-wallet
 pause
@@ -114,6 +121,19 @@ Join the public testnet (testnet coins have no value):
   3. To see your coins or send some, double-click "Open testnet wallet" and type
      balance   or   transfer ADDRESS AMOUNT
      Mined coins unlock after 60 blocks (about 30 minutes).
+     When the wallet says new coins have arrived, type  refresh  and enter your
+     password when the wallet asks for it (never after the [wallet ...]: prompt).
+
+Mining threads: the miner uses a quarter of this PC's CPU threads, which keeps the
+PC cool and usable. To change it, right-click "Start Opacra testnet", choose Edit
+(or Show more options, Edit), and put a number after  set MINE_THREADS=  , for
+example  set MINE_THREADS=4  . Save, then start it again. If the CPU runs hotter
+than about 85 C, use fewer threads.
+
+Upgrading from an earlier version: unzip the new version into its own folder, then
+copy these three files from your old folder into the new one before starting it:
+  testnet-wallet   testnet-wallet.keys   testnet-wallet.address.txt
+The blockchain is stored outside the folder, so it is not downloaded again.
 
 Files:
   Start Opacra testnet.bat   wallet (first time), node and miner in one window

@@ -344,7 +344,9 @@ def watchdog():
                          "This seed enforces DNS checkpoints but cannot read them, so it would not follow an "
                          "emergency checkpoint. Both domains must answer with the same DNSSEC-valid records. "
                          "From the PC: dig +short TXT %s.opacra.org and %s.opacra.com must print the same "
-                         "lines." % (("testpoints",) * 2 if NET == "testnet" else ("checkpoints",) * 2),
+                         "lines. If they do, the node may need an update, for example for a new root DNS key "
+                         "(docs/EMERGENCY_CHECKPOINTS.md, Keep it ready)."
+                         % (("testpoints",) * 2 if NET == "testnet" else ("checkpoints",) * 2),
                          priority=4, tags="warning"),
             lambda: send("emergency checkpoints readable again", "DNS checkpoints can be read again.",
                          priority=2, tags="white_check_mark"))

@@ -231,6 +231,17 @@ Network and wallet:
     (Monero changed it unlocked); a DNS set with two hashes for one height is ignored whole;
     an enforcing node warns once when no checkpoint can be read. The testnet config-file and
     libwallet ringdb defaults also use `testnet2`.
+24. v0.2.4 (no consensus change): `src/common/dns_utils.cpp` trusts the root DNSSEC key
+    KSK-2024 (`. IN DS 38696 8 2 683D…2B16`), which alone signs the root zone from 11 October
+    2026; without it no DNSSEC record validated and DNS checkpoints could not be read (found
+    by the testnet checkpoint drill, 12 Oct). The fallback resolvers, used over TCP when the
+    system resolver cannot deliver DNSSEC-valid answers, are Quad9 and Cloudflare instead of
+    Monero's list. `epee` `connection::add_ref` uses `weak_from_this().lock()` instead of
+    catching `boost::bad_weak_ptr` from `shared_from_this()`, so closing connections no longer
+    log a stack trace each (about 100 MB a day on the seed). Wallet: the "password needed"
+    notice from background refresh is shown once, in plain words, until the next manual
+    refresh. Testnet launchers mine with a quarter of the CPU threads by default
+    (`MINE_THREADS` overrides it).
 
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,

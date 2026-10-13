@@ -39,6 +39,31 @@ A TXT record whose value is `height:hash`, for example:
 There is always one standing record (an older block). Nodes then see a healthy answer in
 normal times, and an emergency only means adding one more record.
 
+## Keep it ready (before you ever need it)
+
+Emergency checkpoints only help if the seeds can read them. Check after every release, every
+seed install, and once a month:
+
+```
+ssh opacra-seed1 'grep -E "DNS checkpoint enforced|none could be read|can be read again" /var/lib/opacra/opacra.log | tail -3'
+```
+
+The newest line must be `DNS checkpoint enforced: block 2000 = …` (or "can be read again").
+If it says "none could be read", fix that first: the phone alert "emergency checkpoints
+unreadable" means the same thing. Known causes:
+
+- **The root DNS key changed.** Nodes validate DNSSEC with built-in root keys. The root key
+  changed on 11 October 2026 (KSK-2024, tag 38696) and nodes before v0.2.4 could no longer
+  validate anything. Test on the seed:
+  `unbound-host -f /tmp/new.ds -t TXT testpoints.opacra.org` with the current root keys from
+  `/usr/share/dns/root.ds` (package `dns-root-data`). "validation failure … while building
+  chain of trust" means the node needs the new key in `src/common/dns_utils.cpp`.
+- **The resolver does not pass DNSSEC data.** The node then falls back to Quad9/Cloudflare
+  over TCP. The testnet seed also sets `DNS_PUBLIC=tcp://1.1.1.1` in
+  `/etc/systemd/system/opacrad.service.d/dns.conf`.
+- **The two domains disagree, or a record is missing:** `dig +short TXT testpoints.opacra.org`
+  and `.com` must print the same lines.
+
 ## Emergency checklist
 
 Follow it in order, even when it seems obvious. A wrong checkpoint is worse than none:

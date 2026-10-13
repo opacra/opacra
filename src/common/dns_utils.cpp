@@ -46,13 +46,16 @@ using namespace epee;
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "net.dns"
 
+// Opacra: used (over TCP) only when the system's resolver cannot deliver DNSSEC-valid answers.
+// The node validates every signature itself with the root keys below, so these servers only
+// carry the records. Monero's list (CCC, FDN, censurfridns, punCAT, SkyDNS) was replaced in
+// v0.2.4: several of those no longer answered reliably (seen on the testnet seed, Oct 2026).
 static const char *DEFAULT_DNS_PUBLIC_ADDR[] =
 {
-  "194.150.168.168",    // CCC (Germany)
-  "80.67.169.40",       // FDN (France)
-  "89.233.43.71",       // http://censurfridns.dk (Denmark)
-  "109.69.8.51",        // punCAT (Spain)
-  "193.58.251.251",     // SkyDNS (Russia)
+  "9.9.9.9",            // Quad9 (Switzerland, non-profit)
+  "149.112.112.112",    // Quad9 secondary
+  "1.1.1.1",            // Cloudflare
+  "1.0.0.1",            // Cloudflare secondary
 };
 
 static boost::mutex instance_lock;

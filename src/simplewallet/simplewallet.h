@@ -448,6 +448,7 @@ namespace cryptonote
     std::atomic<bool> m_auto_refresh_enabled;
     bool m_auto_refresh_refreshing;
     std::atomic<bool> m_in_manual_refresh;
+    std::atomic<bool> m_password_hint_shown; // Opacra: "password needed" hint printed since the last manual refresh
     uint32_t m_current_subaddress_account;
 
     std::atomic<time_t> m_last_activity_time;

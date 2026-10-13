@@ -27,7 +27,10 @@ if [ ! -f testnet-wallet.address.txt ]; then
 fi
 
 ADDR=$(cat testnet-wallet.address.txt)
-THREADS=$(( $(nproc) / 2 )); [ "$THREADS" -ge 1 ] || THREADS=1
+# a quarter of the CPU threads keeps the machine cool and usable; MINE_THREADS=N overrides it
+THREADS=${MINE_THREADS:-$(( $(nproc) / 4 ))}
+case "$THREADS" in ''|*[!0-9]*) THREADS=1 ;; esac
+[ "$THREADS" -ge 1 ] || THREADS=1
 echo
 echo " Opacra testnet: joining the network and mining with $THREADS threads to your wallet"
 echo " $ADDR"
@@ -35,5 +38,6 @@ echo
 echo " Leave this terminal open while you mine; type  exit  to stop. Mining starts once the"
 echo " node has caught up, usually within a few minutes. Type  status  to check. To see"
 echo " your coins, open a second terminal in this folder and run  ./open-wallet.sh"
+echo " To mine with N threads instead:  MINE_THREADS=N ./start-testnet.sh"
 echo
 exec ./opacrad --testnet --start-mining "$ADDR" --mining-threads "$THREADS"

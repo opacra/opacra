@@ -22,6 +22,8 @@ cp "$BUILD_DIR/bin/opacrad" "$BUILD_DIR/bin/opacra-wallet-cli" "$BUILD_DIR/bin/o
 strip "$STAGE/$BIN_DIR/"* 2>/dev/null || true
 cp -r contrib/launch "$STAGE/$BIN_DIR/launch-kit"
 rm -f "$STAGE/$BIN_DIR/launch-kit/package_release.sh"
+# never ship Python byte-code caches (created when opacra-alert / opacra-audit were run or tested)
+find "$STAGE/$BIN_DIR/launch-kit" -name __pycache__ -type d -prune -exec rm -rf {} +
 # testers start here: one script does libraries, wallet and mining
 mv "$STAGE/$BIN_DIR/launch-kit/start-testnet.sh" "$STAGE/$BIN_DIR/launch-kit/open-wallet.sh" "$STAGE/$BIN_DIR/"
 cp LICENSE "$STAGE/$BIN_DIR/"
@@ -33,7 +35,16 @@ Opacra v$VERSION - Linux x86_64 binaries (built on Ubuntu 24.04, dynamically lin
   opacrad             full node / miner
   opacra-wallet-cli   command-line wallet
   opacra-wallet-rpc   wallet JSON-RPC server (same API as monero-wallet-rpc)
-  launch-kit/         systemd unit, example config, seed node setup, Dockerfile
+  launch-kit/         systemd unit, example config, seed node setup, alerts, chain audit, Dockerfile
+
+Mining threads: start-testnet.sh uses a quarter of the CPU threads. To use N threads:
+  MINE_THREADS=N ./start-testnet.sh
+When the wallet says new coins have arrived, type  refresh  and enter your password when the
+wallet asks for it (never after the [wallet ...]: prompt).
+
+Upgrading from an earlier version: unpack the new version, then copy testnet-wallet,
+testnet-wallet.keys and testnet-wallet.address.txt from the old folder into the new one
+before running start-testnet.sh. The blockchain (~/.opacra) is not downloaded again.
 
 Runtime packages on Ubuntu 24.04:
   sudo apt install libboost-chrono1.83.0t64 libboost-filesystem1.83.0 libboost-program-options1.83.0 \\
