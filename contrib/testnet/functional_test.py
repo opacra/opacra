@@ -133,6 +133,10 @@ def verify_chain(d):
     for h in hs:
         height = h["height"]
         exp_diff = tp.lwma_next_difficulty(ts, cds)
+        # v0.1.3 security fix: block 1 costs the startup guess, except on the public testnet
+        # (its block 1 was mined at difficulty 1); same rule as Blockchain::get_difficulty_for_next_block
+        if height == 1 and os.environ.get("NET_FLAG", "") != "--testnet":
+            exp_diff = tp.STARTUP_GUESS
         if exp_diff != h["difficulty"]:
             mismatches.append(("difficulty", height, exp_diff, h["difficulty"]))
         base = tp.block_reward(generated, height)

@@ -3,6 +3,15 @@
 Mistakes and surprises from building and testing Opacra, each with the rule that stops it
 happening again. Newest first. Read this before a release, a drill or a launch step.
 
+## 13–14 Oct 2026: v0.2.4 release preparation
+
+| What went wrong | Why | Rule from now on |
+|---|---|---|
+| The full three-node functional test failed one check: block 1's difficulty | Since v0.1.3 block 1 costs 10,000 (security audit fix), but the test's Python reference was never updated, because the full test was not re-run after v0.1.3. The chain and opacra-audit were right; the test was stale. | Run the full functional test (`contrib/testnet/functional_test.py`) before every release, and after any consensus change in the same commit. |
+| The site's Linux command could check an old download if run twice | `wget -q` saves a second copy as `.tar.gz.1`, and the hash check then reads the first file. | Download commands write to a fixed name (`wget -qO <file> <url>`). |
+| A test package built before the final commit still contained `__pycache__` | It was built from the working tree before the fix landed. | Release files are always built from a clean, committed tree; check the tarball's file list before signing. |
+| Claude's `pkill -f` matched its own shell again (exit 144) | Same mistake as 12 Oct: the pattern appears in the command line that runs pkill. | Never use `pkill -f`/`pgrep -f` with a pattern typed in the same command; use `pgrep -x <name>` or a PID. |
+
 ## 12 Oct 2026: emergency checkpoint drill, payment tests
 
 | What went wrong | Why | Rule from now on |
