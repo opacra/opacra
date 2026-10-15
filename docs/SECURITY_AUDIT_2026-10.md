@@ -188,6 +188,9 @@ checked proof of work once.
 
 ## Tests
 
+Difficulty fuzz (15 Oct 2026): `contrib/sim/difficulty_fuzz.py` with `opacra_difficulty_fuzz` runs the node's real `next_difficulty()` on random honest and hostile histories (stalled, repeated, backwards and far-future timestamps, uint64-edge times, per-block difficulty from 0 to 2^96, window lengths 0–90) and compares each result with the Python model. 600,000 cases over three seeds: no difference, every result at least 1. Mutation check: changing the model's 6T cap to 5T, or its window from 60 to 59, is caught in 18–21% of cases.
+
+
 - `tests/opacra` (`opacra_consensus_tests`): 0 failures. New checks cover:
   - the floor at every height;
   - the first-hour floor and block 1;
