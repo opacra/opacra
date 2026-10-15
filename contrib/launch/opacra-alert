@@ -218,7 +218,7 @@ def rpc(method, params=None):
 LOG_PATTERNS = [
     ("missing", re.compile(r"Enforcing DNS checkpoints, but none could be read")),
     ("readable", re.compile(r"DNS checkpoints can be read again")),
-    ("enforced", re.compile(r"DNS checkpoint enforced: block (\d+) = ([0-9a-f]{64})")),
+    ("enforced", re.compile(r"DNS checkpoint enforced: block (\d+) = <?([0-9a-f]{64})>?")),
     ("conflict", re.compile(r"DNS checkpoint at block (\d+) conflicts with an existing checkpoint")),
 ]
 
