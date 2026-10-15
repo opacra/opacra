@@ -325,7 +325,15 @@ def watchdog():
             if kind == "enforced":
                 h = int(groups[0])
                 if h != s.get("dns_height"):
-                    if not first and s.get("dns_height") is not None:
+                    if not first and s.get("dns_height") is not None and h < s["dns_height"]:
+                        # a higher checkpoint was taken out of DNS; the running node still holds it
+                        to_send.append((lambda h=h, old=s["dns_height"]: send(
+                            "checkpoint at block %d removed from DNS" % old,
+                            "DNS now lists checkpoints only up to block %d. The node keeps enforcing "
+                            "block %d until it restarts (systemctl restart opacrad).\n\n"
+                            "If you did not just remove it, check both domains at once." % (h, old),
+                            priority=4, tags="pushpin")))
+                    elif not first and s.get("dns_height") is not None:
                         to_send.append((lambda h=h, x=groups[1]: send(
                             "checkpoint now enforced at block %d" % h,
                             "The seed now refuses any chain without block %d = %s.\n\n"

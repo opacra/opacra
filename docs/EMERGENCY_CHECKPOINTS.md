@@ -105,6 +105,9 @@ Enforcing nodes keep every DNS checkpoint they have read until they restart, so:
 
 - **To remove one**, delete the record from both domains, then restart the enforcing
   nodes (seed: `systemctl restart opacrad`). Until they restart they keep enforcing it.
+  The seed's phone alert says "checkpoint at block H removed from DNS" when this happens.
+  (Drill on 15 Oct 2026, v0.2.4: block 13900 published on both domains, enforced within 5
+  minutes, removed, seed restarted; every step alerted.)
 - **Never change the hash of a published height in place.** Enforcing nodes treat the new
   hash as a conflict and shut down (and restart in a loop under systemd) until both domains
   show one consistent value. To correct a wrong checkpoint, remove it from both domains,
