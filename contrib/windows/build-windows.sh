@@ -130,6 +130,9 @@ PC cool and usable. To change it, right-click "Start Opacra testnet", choose Edi
 example  set MINE_THREADS=4  . Save, then start it again. If the CPU runs hotter
 than about 85 C, use fewer threads.
 
+"No incoming connections" or "No other node has connected to this one yet": normal
+on a home connection behind a router. Mining and syncing work as usual; nothing to do.
+
 Upgrading from an earlier version: unzip the new version into its own folder, then
 copy these three files from your old folder into the new one before starting it:
   testnet-wallet   testnet-wallet.keys   testnet-wallet.address.txt

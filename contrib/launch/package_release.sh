@@ -39,6 +39,8 @@ Opacra v$VERSION - Linux x86_64 binaries (built on Ubuntu 24.04, dynamically lin
 
 Mining threads: start-testnet.sh uses a quarter of the CPU threads. To use N threads:
   MINE_THREADS=N ./start-testnet.sh
+"No incoming connections" or "No other node has connected to this one yet" is normal on a
+home connection behind a router: mining and syncing work as usual.
 When the wallet says new coins have arrived, type  refresh  and enter your password when the
 wallet asks for it (never after the [wallet ...]: prompt).
 

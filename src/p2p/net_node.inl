@@ -2161,8 +2161,15 @@ namespace nodetool
       }
       else
       {
-        const el::Level level = el::Level::Warning;
-        MCLOG_RED(level, "global", "No incoming connections - check firewalls/routers allow port " << get_this_peer_port());
+        // Opacra: most home nodes sit behind a router and never get incoming connections,
+        // which is harmless (outgoing connections are enough to sync and mine). Monero
+        // repeated this as a red warning every hour; say it once, in plain words.
+        // Seeds learn about a lack of peers from the phone alerts (docs/ALERTS.md).
+        static std::atomic<bool> s_no_incoming_shown{false};
+        if (!s_no_incoming_shown.exchange(true))
+          MGINFO_YELLOW("No other node has connected to this one yet. That is normal on a home connection "
+            "behind a router: syncing and mining work as usual. To accept connections (optional), allow TCP port "
+            << get_this_peer_port() << " in your router and firewall.");
       }
     }
     return true;
