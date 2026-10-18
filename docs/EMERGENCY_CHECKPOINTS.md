@@ -39,6 +39,12 @@ A TXT record whose value is `height:hash`, for example:
 There is always one standing record (an older block). Nodes then see a healthy answer in
 normal times, and an emergency only means adding one more record.
 
+**A new chain starts with its genesis as the standing record** (`0:<genesis hash>`, printed
+by `make_genesis.py verify`), published on both domains on launch day in place of any older
+record. Without any record, every enforcing node (seeds, and home nodes started by the
+launchers) logs a red "none could be read" warning and the seeds send an alert. The genesis
+is safe to publish: every node already has it built in.
+
 ## Keep it ready (before you ever need it)
 
 Emergency checkpoints only help if the seeds can read them. Check after every release, every
@@ -158,5 +164,6 @@ Enforcing nodes keep every DNS checkpoint they have read until they restart, so:
 - The registrar account controls this power: two-factor login, the project email only,
   backup codes offline. Treat it like the release signing key. Both zones are currently in
   one account; moving opacra.com to a second registrar would remove that single point of
-  failure (planned before mainnet).
+  failure. Decided 18 Oct 2026: one account, locked down (long unique password, support PIN,
+  domain lock, the project email secured with authenticator 2FA and a recovery phrase).
 - Rehearse on the testnet before mainnet (mining security plan, Phase 2).

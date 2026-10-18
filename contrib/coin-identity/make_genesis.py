@@ -138,6 +138,10 @@ def verify(a):
         print("RESULT: %s" % ("GENESIS OK" if ok else "MISMATCH: do not launch"))
         line = '      ADD_CHECKPOINT2(0, "%s", "0x1");' % hdr["hash"]
         print("Checkpoint line:  %s" % line.strip())
+        # enforcing nodes warn ("none could be read") while no DNS checkpoint record exists,
+        # so launch day publishes the genesis as the first record on both domains
+        print("DNS record:       %s TXT  0:%s  (on both domains, replacing any older record)" % (
+            "checkpoints" if a.network == "mainnet" else "testpoints", hdr["hash"]))
         if ok and a.checkpoint:
             cp = CHECKPOINTS.read_text()
             marker = "    if (nettype == TESTNET)\n    {\n" if a.network == "testnet" else "    if (nettype == MAINNET)\n    {\n"
