@@ -45,6 +45,12 @@ else
 fi
 chown -R opacra:opacra /var/lib/opacra
 cp opacrad.service /etc/systemd/system/opacrad.service
+# reliable DNS for the emergency checkpoints: the node's built-in list of public DNS servers
+# is old (lessons learned, 12 Oct 2026); kept if it already exists
+mkdir -p /etc/systemd/system/opacrad.service.d
+if [ ! -e /etc/systemd/system/opacrad.service.d/dns.conf ]; then
+  printf '[Service]\nEnvironment=DNS_PUBLIC=tcp://1.1.1.1\n' > /etc/systemd/system/opacrad.service.d/dns.conf
+fi
 systemctl daemon-reload
 systemctl enable opacrad
 # restart (not just start) so that re-running this script with a new package upgrades the node

@@ -30,12 +30,13 @@ namespace coin_network
     {
       case cryptonote::MAINNET:
         return {
-          // "203.0.113.10:29960",   // seed-1 (example - replace)
-          // "198.51.100.20:29960",  // seed-2 (example - replace)
+          "169.58.62.247:29960",   // seed 1 (Contabo, Hub Europe)
+          "13.140.226.160:29960",  // seed 2 (Contabo, US East), ordered 18 Oct 2026
         };
       case cryptonote::TESTNET:
         return {
           "169.58.62.247:29970",   // testnet seed 1 (Contabo, EU), live since 4 Oct 2026
+          "13.140.226.160:29970",  // testnet seed 2 (Contabo, US East), live since 18 Oct 2026
         };
       case cryptonote::STAGENET:
         return {};

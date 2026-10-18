@@ -50,9 +50,12 @@ python3 coinid.py genesis --reward 2384185791015 \
 
 ## 3. Network endpoints (`src/coin_network.h`)
 
-- [ ] 3+ seed nodes on different providers and continents (2 vCPU, 4 GB RAM, 80 GB SSD;
-      ~$5–10 a month each). Run `contrib/launch/seed-node-setup.sh` on each (section 5).
-- [ ] Add their `ip:29960` to `ip_seed_nodes(MAINNET)`.
+- [x] Two seed nodes on two continents (decided 18 Oct 2026, advisor: two are enough):
+      seed 1 169.58.62.247 (Contabo, Hub Europe), seed 2 13.140.226.160 (Contabo, US East,
+      set up 18 Oct, on testnet 2 since). Both at one company: Hetzner refused nodes in
+      writing (18 Oct) and Contabo's policy allows them. Add a third seed at another company
+      after launch.
+- [x] Their `ip:29960` are in `ip_seed_nodes(MAINNET)` (and `:29970` for testnet).
 - [ ] Optional: a DNS seed name (e.g. `seeds.yourcoin.org`) with one A record per seed,
       DNSSEC enabled, listed in `dns_seed_domains()`.
 - [ ] Optional: a Tor onion service on one seed (`tor_seed_nodes()`), see
