@@ -10,7 +10,7 @@ End-to-end functional test of an Opacra network on one machine.
   5. exercises selective disclosure: tx key, payment proof and reserve proof
   6. forces a chain split and checks that the network re-converges (reorg)
   7. replays every block: recomputes difficulty (LWMA-1), the development fund payment, and reward (emission +
-     slow start + fees) independently in Python and compares with the chain
+     fees) independently in Python and compares with the chain
 
 Writes a JSON report to $DATA/report.json.   Needs a built tree (build/release/bin).
 """
@@ -133,9 +133,9 @@ def verify_chain(d):
     for h in hs:
         height = h["height"]
         exp_diff = tp.lwma_next_difficulty(ts, cds)
-        # v0.1.3 security fix: block 1 costs the startup guess, except on the public testnet
-        # (its block 1 was mined at difficulty 1); same rule as Blockchain::get_difficulty_for_next_block
-        if height == 1 and os.environ.get("NET_FLAG", "") != "--testnet":
+        # security audit rule: block 1 costs the startup guess on every network
+        # (same rule as Blockchain::get_difficulty_for_next_block)
+        if height == 1:
             exp_diff = tp.STARTUP_GUESS
         if exp_diff != h["difficulty"]:
             mismatches.append(("difficulty", height, exp_diff, h["difficulty"]))
@@ -326,7 +326,7 @@ def main():
     report["replay"] = {"blocks": n_blocks, "blocks_with_fees": fee_blocks, "generated_atomic": generated,
                         "mismatches": mism[:20]}
     check(f"replayed {n_blocks} blocks: every difficulty matches LWMA-1 reference", not [m for m in mism if m[0] == "difficulty"])
-    check(f"replayed {n_blocks} blocks: every reward matches emission+slow-start+fees", not [m for m in mism if m[0] == "reward"])
+    check(f"replayed {n_blocks} blocks: every reward matches emission+fees", not [m for m in mism if m[0] == "reward"])
     check(f"replayed {n_blocks} blocks: every coinbase pays the development fund 5% of the subsidy",
           not [m for m in mism if m[0] == "devfund"], f"fund total {fund_total / ATOMIC:.6f} OPCA")
 

@@ -2,7 +2,7 @@
 // BSD-3-Clause, see LICENSE.
 //
 // Regression tests for the consensus rules Opacra changed relative to Monero:
-// per-block emission and tail, launch slow start (reward ramp and block-weight cap),
+// per-block emission and tail, full reward and Monero's size penalty from block 1,
 // LWMA-1 difficulty, and the compact hard-fork tables.  No test framework needed:
 //   make opacra_consensus_tests && ./bin/opacra_consensus_tests   (exit code 0 = pass)
 
@@ -69,38 +69,39 @@ static void test_emission()
   EXPECT(!cryptonote::get_block_reward(300000, 600001, 0, r, 16)); // over 2x median: invalid
 }
 
-static void test_slow_start()
+static void test_full_reward_from_block_1()
 {
-  EXPECT_EQ(cryptonote::apply_slow_start(FULL, 0), FULL);                 // genesis exempt
-  EXPECT_EQ(cryptonote::apply_slow_start(FULL, 1), FULL / SLOW_START_BLOCKS);
-  EXPECT_EQ(cryptonote::apply_slow_start(FULL, SLOW_START_BLOCKS / 2), FULL / 2);
-  EXPECT_EQ(cryptonote::apply_slow_start(FULL, SLOW_START_BLOCKS - 1), (uint64_t)((unsigned __int128)FULL * (SLOW_START_BLOCKS - 1) / SLOW_START_BLOCKS));
-  EXPECT_EQ(cryptonote::apply_slow_start(FULL, SLOW_START_BLOCKS), FULL);
-  EXPECT_EQ(cryptonote::apply_slow_start(FULL, 5000000), FULL);
-  EXPECT_EQ(cryptonote::apply_slow_start(~0ull, 20159), (uint64_t)((unsigned __int128)(~0ull) * 20159 / SLOW_START_BLOCKS)); // no overflow
-
-  uint64_t r = 0;
-  // during the ramp: at or below the effective median is fine, above it is refused
-  EXPECT(cryptonote::get_block_reward_at_height(300000, 300000, FULL, r, 16, 100));
-  EXPECT_EQ(r, cryptonote::apply_slow_start((MONEY_SUPPLY - FULL) >> 22, 100));
-  EXPECT(!cryptonote::get_block_reward_at_height(300000, 300001, FULL, r, 16, 100));
-  EXPECT(!cryptonote::get_block_reward_at_height(0, 75001, FULL, r, 16, SLOW_START_BLOCKS - 1)); // median floored at 75 kB
-  EXPECT(cryptonote::get_block_reward_at_height(0, 75000, FULL, r, 16, SLOW_START_BLOCKS - 1));
+  // no launch slow start (removed 18 Oct 2026): every height pays the emission curve
+  uint64_t r = 0, plain = 0;
+  for (uint64_t h : { (uint64_t)1, (uint64_t)2, (uint64_t)100, (uint64_t)20159, (uint64_t)20160, (uint64_t)5000000 })
+  {
+    EXPECT(cryptonote::get_block_reward_at_height(0, 0, FULL, r, 16, h));
+    EXPECT(cryptonote::get_block_reward(0, 0, FULL, plain, 16));
+    EXPECT_EQ(r, plain);
+  }
+  EXPECT(cryptonote::get_block_reward_at_height(0, 0, FULL, r, 16, 1));
+  EXPECT_EQ(r, (MONEY_SUPPLY - FULL) >> 22);   // block 1 right after genesis: the full curve
   // block-size rules scaled to 30 s blocks (Monero's values per unit of time)
   EXPECT_EQ(cryptonote::get_min_block_weight(16), size_t(75000));
   EXPECT_EQ(CRYPTONOTE_REWARD_BLOCKS_WINDOW * DIFFICULTY_TARGET_V2, 100 * 120);
   EXPECT_EQ(CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE * DIFFICULTY_TARGET_V2, 100000 * 120);
   EXPECT_EQ(CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5 * 120 / DIFFICULTY_TARGET_V2, 300000);
-  // below the old 300 kB floor but above the new one: allowed only with the penalty after the ramp
-  EXPECT(cryptonote::get_block_reward_at_height(0, 112500, 0, r, 16, SLOW_START_BLOCKS));
+  // first week, block-size rules (the case the slow start used to cap): Monero's penalty
+  // applies from block 1. At the 75 kB floor a full block is fine, 1.5x loses a quarter of
+  // the reward, and over 2x the median is invalid, exactly as at any later height.
+  EXPECT(cryptonote::get_block_reward_at_height(0, 75000, 0, r, 16, 100));
+  EXPECT_EQ(r, FULL);
+  EXPECT(cryptonote::get_block_reward_at_height(0, 112500, 0, r, 16, 100));
   EXPECT_EQ(r, (uint64_t)(((unsigned __int128)FULL * 37500 * 112500 / 75000) / 75000));
-  // after the ramp Monero's penalty zone opens again
-  EXPECT(cryptonote::get_block_reward_at_height(300000, 450000, 0, r, 16, SLOW_START_BLOCKS));
+  EXPECT(!cryptonote::get_block_reward_at_height(0, 150001, 0, r, 16, 100));
+  EXPECT(cryptonote::get_block_reward_at_height(300000, 450000, 0, r, 16, 1));
   EXPECT_EQ(r, PENALISED);
-  // the ramp's size cap does not apply to genesis (v1: 20 kB median floor, so 30 kB is in
-  // Monero's penalty zone, which is allowed there but refused at heights inside the ramp)
+  uint64_t later = 0;
+  EXPECT(cryptonote::get_block_reward_at_height(0, 112500, 0, later, 16, 3000000));
+  EXPECT(cryptonote::get_block_reward_at_height(0, 112500, 0, r, 16, 100));
+  EXPECT_EQ(r, later);   // same block, same reward, whatever the height
+  // genesis (v1: 20 kB median floor) keeps Monero's rule too
   EXPECT(cryptonote::get_block_reward_at_height(0, 30000, 0, r, 1, 0));
-  EXPECT(!cryptonote::get_block_reward_at_height(0, 30000, 0, r, 1, 1));
 }
 
 static difficulty_type lwma(const std::vector<uint64_t> &ts, const std::vector<difficulty_type> &cd)
@@ -192,8 +193,8 @@ static void test_alt_difficulty_floor()
   EXPECT(!alt_difficulty_acceptable(from - 1, 5000, 16, main_next));
   EXPECT(!alt_difficulty_acceptable(12, 5000, 10000, main_next));
   EXPECT(!alt_difficulty_acceptable(from, from, 1, main_next));
-  // first hour (main chain below 122 blocks): block 1 now costs the startup guess (except on
-  // the public testnet, which is past its first hour), so an honest race for block 1 can be
+  // first hour (main chain below 122 blocks): block 1 costs the startup guess on every
+  // network, so an honest race for block 1 can be
   // settled at any time in the first hour, and a difficulty-1 block never gets in...
   EXPECT(alt_difficulty_acceptable(1, 2, DIFFICULTY_STARTUP_GUESS, DIFFICULTY_STARTUP_GUESS));
   EXPECT(alt_difficulty_acceptable(1, from - 1, DIFFICULTY_STARTUP_GUESS, main_next));
@@ -319,7 +320,7 @@ static void test_dev_fund()
   EXPECT(!(fR1 == fR3));
   get_dev_fund_tx_key(MAINNET, 100, other_prev, fr2, fR4);
   EXPECT(!(fR1 == fR4));
-  // testnet 2 binds the previous block from block 1, like mainnet
+  // the testnet binds the previous block from block 1, like mainnet
   get_dev_fund_tx_key(TESTNET, 1, prev, fr2, fR3);
   get_dev_fund_tx_key(TESTNET, 1, other_prev, fr2, fR4);
   EXPECT(!(fR3 == fR4));
@@ -439,7 +440,8 @@ static void test_hardforks_and_identity()
 
 static void test_checkpoints()
 {
-  // the hard-coded testnet-2 genesis checkpoint is the genesis block this build generates
+  // the hard-coded testnet genesis checkpoint (written by make_genesis.py verify) is the
+  // genesis block this build generates
   cryptonote::block genesis;
   EXPECT(cryptonote::generate_genesis_block(genesis, config::testnet::GENESIS_TX, config::testnet::GENESIS_NONCE));
   const crypto::hash gh = cryptonote::get_block_hash(genesis);
@@ -447,12 +449,12 @@ static void test_checkpoints()
   cryptonote::checkpoints cp;
   EXPECT(cp.init_default_checkpoints(cryptonote::TESTNET));
   EXPECT(cp.check_block(0, gh));
-  EXPECT_EQ(cp.get_max_height(), (uint64_t)2000);
+  EXPECT_EQ(cp.get_max_height(), (uint64_t)0);
   // a different block at a checkpointed height is refused; side blocks at or below it too
   crypto::hash other = gh; other.data[0] ^= 1;
   EXPECT(!cp.check_block(0, other));
-  EXPECT(!cp.is_alternative_block_allowed(2100, 2000));
-  EXPECT(cp.is_alternative_block_allowed(2100, 2001));
+  EXPECT(!cp.is_alternative_block_allowed(2100, 0));
+  EXPECT(cp.is_alternative_block_allowed(2100, 1));
   // DNS checkpoints: two domains on two separate zones per public network, so both must agree
   for (auto n: { cryptonote::MAINNET, cryptonote::TESTNET })
   {
@@ -471,7 +473,7 @@ static void test_checkpoints()
 int main()
 {
   test_emission();
-  test_slow_start();
+  test_full_reward_from_block_1();
   test_lwma();
   test_alt_difficulty_floor();
   test_dev_fund();

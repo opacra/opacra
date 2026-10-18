@@ -4,16 +4,18 @@
 Run on a machine with a synced node (normally a seed):
   opacra-audit                         testnet node on 127.0.0.1:29971, whole chain
   opacra-audit --rpc 127.0.0.1:29961   mainnet node
-  opacra-audit --to 20160              stop at a given height (default: 10 blocks below the tip)
+  opacra-audit --to 5000               stop at a given height (default: 10 blocks below the tip)
   opacra-audit --report audit.txt      also write the report to a file
 
 It recomputes from the published rules, not from the node's code: every block reward
-(emission curve, launch slow start, tail emission), every development fund payment (5% of
+(emission curve and tail emission, full reward from block 1), every development fund payment (5% of
 the subsidy, paid to the fund's one-time key and found with the fund's public view key),
 every block's difficulty (LWMA-1), the chain links and the timestamp rule, and the total
 coins created. Only the Python standard library is used, including the Keccak and
 ed25519 arithmetic. Exit status 0 = every check passed, 1 = a check failed, 2 = could not
 run.
+
+Testnet 2 had a launch slow start; audit it with the opacra-audit from release v0.2.4.
 """
 
 import argparse
@@ -28,7 +30,6 @@ COIN = 10 ** 12
 MONEY_SUPPLY = 10_000_000 * COIN
 EMISSION_SPEED_FACTOR = 22
 TAIL_EMISSION = 50_000_000_000            # 0.05 OPCA
-SLOW_START_BLOCKS = 20160
 DEV_FUND_PERCENT = 5
 UNLOCK_WINDOW = 60
 TARGET = 30                               # seconds per block
@@ -55,12 +56,6 @@ TIP_MARGIN = 10
 def base_reward(generated):
     r = (MONEY_SUPPLY - min(generated, MONEY_SUPPLY)) >> EMISSION_SPEED_FACTOR
     return max(r, TAIL_EMISSION)
-
-
-def slow_start(reward, height):
-    if height == 0 or height >= SLOW_START_BLOCKS:
-        return reward
-    return reward * height // SLOW_START_BLOCKS
 
 
 def dev_fund_share(subsidy, height):
@@ -366,7 +361,7 @@ class Audit:
                 except (KeyError, ValueError, TypeError, IndexError, AttributeError) as e:
                     self.check("coinbase form", False, height, "block data could not be read (%s: %s)" % (type(e).__name__, e))
                 # carry the chain state forward from the block as the node has it
-                subsidy = slow_start(base_reward(generated), height) if height else int(h["reward"])
+                subsidy = base_reward(generated) if height else int(h["reward"])
                 generated += subsidy
                 cumdiff = wide(h, "cumulative_difficulty")
                 prev_hash = h["hash"]
@@ -416,7 +411,7 @@ class Audit:
         # difficulty
         if self.net != "fakechain":
             expected = lwma(window_ts, window_cd)
-            if height == 1 and self.net != "testnet":
+            if height == 1:
                 expected = STARTUP_GUESS
             if height > 0:
                 self.check("difficulty", diff == expected, height, "difficulty %d, LWMA gives %d" % (diff, expected))
@@ -439,21 +434,19 @@ class Audit:
                    "coinbase carries RingCT data")
         self.check("coinbase form", int(h["reward"]) == total, height, "header reward differs from the coinbase outputs")
 
-        # reward: the emission curve with the slow start, plus fees
+        # reward: the emission curve, plus fees
         tx_hashes = bj.get("tx_hashes", [])
         self.check("coinbase form", len(tx_hashes) == int(h["num_txes"]), height, "transaction count differs")
         fees = self.fees_of(tx_hashes)
         self.stats["txs"] += len(tx_hashes)
         self.stats["fees"] += fees
-        subsidy = slow_start(base_reward(generated), height)
+        subsidy = base_reward(generated)
         weight = int(h.get("block_weight", 0))
         if weight > FULL_REWARD_ZONE:
             # possible size penalty; it depends on the median block weight, so check the bounds only
             self.stats["penalty_blocks"] += 1
             self.check("block rewards", fees <= total <= subsidy + fees, height,
                        "pays %s, more than reward %s + fees %s" % (fmt(total), fmt(subsidy), fmt(fees)))
-            self.check("block rewards", height >= SLOW_START_BLOCKS, height,
-                       "block above %d bytes during the slow start" % FULL_REWARD_ZONE)
         else:
             self.check("block rewards", total == subsidy + fees, height,
                        "pays %s, rules give %s + fees %s" % (fmt(total), fmt(subsidy), fmt(fees)))
@@ -502,7 +495,7 @@ def report(a, net, node_info, seconds):
         ("timestamps", "no block is timed before the median of the 11 before it"),
         ("difficulty", "every block's difficulty matches LWMA-1, recomputed independently"),
         ("coinbase form", "coinbase height, 60-block lock, no RingCT, totals match the header"),
-        ("block rewards", "every block pays exactly the emission-curve reward (with slow start) plus its fees"),
+        ("block rewards", "every block pays exactly the emission-curve reward plus its fees"),
         ("development fund", "every block pays the fund exactly 5%, to its one-time key, found with the public view key"),
         ("total coins created", "the node's own total matches the sum of the rules"),
     ]
@@ -520,14 +513,11 @@ def report(a, net, node_info, seconds):
         if len(bad) > 10:
             lines.append("        ... and %d more" % (len(bad) - 10))
     lines.append("")
-    ramp = min(a.top + 1, SLOW_START_BLOCKS) * 100.0 / SLOW_START_BLOCKS
     span = (a.last_ts - a.first_ts) if a.first_ts is not None and a.top > 1 else 0
     lines.append("Coins created:        %s (genesis included)" % fmt(a.generated))
     lines.append("Development fund:     %s" % fmt(a.stats["dev_fund"]))
     lines.append("Fees paid:            %s in %d transaction(s)" % (fmt(a.stats["fees"]), a.stats["txs"]))
-    lines.append("Next block reward:    %s (slow start %s)" % (
-        fmt(slow_start(base_reward(a.generated), a.top + 1)),
-        "finished" if a.top + 1 >= SLOW_START_BLOCKS else "at %.1f%%, full from block %d" % (ramp, SLOW_START_BLOCKS)))
+    lines.append("Next block reward:    %s" % fmt(base_reward(a.generated)))
     if a.top > 1:
         lines.append("Average block time:   %.1f s over %d blocks (target %d s)" % (span / (a.top - 1), a.top - 1, TARGET))
         lines.append("Longest gap:          %d min %d s, before block %d" % (a.stats["max_gap"][0] // 60,

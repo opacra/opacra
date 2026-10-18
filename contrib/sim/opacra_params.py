@@ -21,7 +21,6 @@ COIN = 10 ** 12
 MONEY_SUPPLY = 10_000_000 * COIN
 EMISSION_SPEED_FACTOR = 22          # EMISSION_SPEED_FACTOR_PER_BLOCK
 TAIL = 50_000_000_000               # TAIL_EMISSION_REWARD (0.05)
-SLOW_START = 20160                  # SLOW_START_BLOCKS
 BLOCKS_PER_YEAR = 365.25 * 86400 / T
 
 
@@ -55,12 +54,6 @@ def base_reward(already_generated):
     return max(r, TAIL)
 
 
-def slow_start(reward, height):
-    if height == 0 or height >= SLOW_START:
-        return reward
-    return reward * height // SLOW_START
-
-
 DEV_FUND_PERCENT = 5
 
 
@@ -70,8 +63,9 @@ def dev_fund_share(subsidy, height):
 
 
 def block_reward(already_generated, height):
-    """Reward for an empty-ish block (no size penalty) at `height`."""
-    return slow_start(base_reward(already_generated), height)
+    """Reward for an empty-ish block (no size penalty) at `height`. Full reward from block 1:
+    there is no launch slow start (removed 18 Oct 2026)."""
+    return base_reward(already_generated)
 
 
 # --------------------------------------------------------------------------- simulation
@@ -103,7 +97,7 @@ def emission_at(height):
 
 
 def emission_table(years=(1, 2, 3, 4, 5, 10, 15, 20, 30)):
-    """Coins emitted after N years (closed-form per block, exact integer loop for slow start)."""
+    """Coins emitted after N years (exact integer loop, block by block)."""
     gen = base_reward(0)  # genesis output (burned)
     rows = []
     h = 1
@@ -123,6 +117,5 @@ def emission_table(years=(1, 2, 3, 4, 5, 10, 15, 20, 30)):
 
 if __name__ == "__main__":
     print("Genesis reward: %.12f OPCA" % (base_reward(0) / COIN))
-    print("First full-reward block (%d): %.12f OPCA" % (SLOW_START, block_reward(emission_at(SLOW_START), SLOW_START) / COIN))
-    print("Reward at height 1 (slow start): %.9f OPCA" % (block_reward(base_reward(0), 1) / COIN))
+    print("Reward at height 1: %.12f OPCA" % (block_reward(base_reward(0), 1) / COIN))
     print("Half-life of remaining main supply: %.2f years" % (2 ** EMISSION_SPEED_FACTOR * math.log(2) / BLOCKS_PER_YEAR))
