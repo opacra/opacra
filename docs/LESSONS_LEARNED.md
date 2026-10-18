@@ -3,6 +3,16 @@
 Mistakes and surprises from building and testing Opacra, each with the rule that stops it
 happening again. Newest first. Read this before a release, a drill or a launch step.
 
+## 18 Oct 2026: attack and recovery rehearsal
+
+| What went wrong | Why | Rule from now on |
+|---|---|---|
+| The emergency guide's checkpoint choice ("newest honest block, 5 below the tip") leaves enforcing nodes stalled after an attack has landed | A node rolls back only 2 blocks below a failed checkpoint and refuses side blocks below a checkpoint, so the attacker's earlier blocks stay and the honest ones can't come back | After a landed attack, checkpoint the first honest block after the split. Save the honest blocks first (`save-side-chain save`). Guide updated |
+| The guide's first draft of a save command would have saved the attacker's blocks | Asking a node for blocks by height returns its current (attacker's) chain | Side-chain blocks are fetched by hash from `get_alternate_chains`; the tool does this and was tested on regtest |
+| A checkpoint alone does not keep the honest chain going | Home miners don't enforce DNS checkpoints by default, so they stay on the attacker's chain; seeds don't mine | Decide whether home nodes enforce by default for the launch period |
+| Seeds block honest home nodes that relayed the attacker's chain, for 24 hours | A checkpoint mismatch counts as misbehaviour | Consider a short block for checkpoint mismatches in the next release |
+| Test results counted "OK" that were really "BUSY" | The script checked for errors, not the `status` field | Check the status field of every RPC answer, not just the absence of an error |
+
 ## 13–14 Oct 2026: v0.2.4 release preparation
 
 | What went wrong | Why | Rule from now on |

@@ -71,9 +71,23 @@ enforcing nodes would stall on a block that never comes.
 
 1. **Confirm the attack.** A "chain rewritten" phone alert (`docs/ALERTS.md`), or the explorer and the seed showing
    blocks being rewritten. Note the height where the chains split.
-2. **Choose the block.** The newest block of the honest chain that both your own nodes
-   agree on, at least 5 blocks below the honest tip. Never choose a height at or below a
-   hard-coded checkpoint: a different hash there shuts enforcing nodes down.
+2. **Choose the block.** Never a height at or below a hard-coded checkpoint: a different
+   hash there shuts enforcing nodes down.
+   - **The attack has already landed** (the alert says the seed switched chains "at block H"):
+     checkpoint the **first honest block after the split**, at height H. Your nodes are
+     now on the attacker's chain, so take its hash from the honest blocks you saved, or from
+     the explorer's history, never from a node's current chain. A deeper honest block does
+     not work: enforcing nodes then roll back only 2 blocks below it, keep the attacker's
+     earlier blocks, and stall (attack rehearsal, 18 Oct 2026, `docs/ATTACK_REHEARSAL.md`).
+   - **Before it lands** (you see an attack building but your nodes are still on the honest
+     chain): the newest block both your nodes agree on, at least 5 blocks below the tip.
+   - **Save the honest blocks first.** After a switch, nodes keep them only as side blocks,
+     and drop those when they restart unless they run with `--keep-alt-blocks`. Before
+     restarting anything, on the seed: `contrib/launch/save-side-chain save` (in the
+     package: `launch-kit/save-side-chain`). It saves them and prints the checkpoint to publish
+     (`H:hash`, the first block after the split). A node left stalled on the attacker's blocks
+     recovers with: restart it with `--offline`, `save-side-chain restore honest-blocks.json`,
+     then restart it normally.
 3. **Read its hash from two separate nodes, and the explorer.** All three must match
    character for character.
    - PC (Opacra Ubuntu tab):

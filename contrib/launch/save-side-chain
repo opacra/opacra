@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Save the honest blocks after a chain rewrite, and put a node back on them.
+
+After a deep reorganisation (a 51% attack that has landed) every node has switched to the
+attacker's chain and keeps the honest blocks only as a side chain, which it drops when it
+restarts (unless it runs with --keep-alt-blocks). Run this on the seed BEFORE restarting
+anything:
+
+  save-side-chain save [--rpc 127.0.0.1:29971] [--out honest-blocks.json]
+      saves the longest side chain (normally the honest one) block by block, oldest first,
+      and prints the split height and the first honest block: the emergency checkpoint to
+      publish (docs/EMERGENCY_CHECKPOINTS.md, step 2)
+
+  save-side-chain restore honest-blocks.json [--rpc ...]
+      for a node stuck on the attacker's blocks below a checkpoint: winds it back to the
+      split (pop_blocks) and resubmits the saved honest blocks in order.
+      Order that works (a node ignores blocks it still holds as side blocks, and refuses
+      submitted blocks while it counts itself out of sync, answering BUSY):
+        1. save   2. restart the node with --offline (this also drops its side blocks)
+        3. restore   4. restart the node normally
+
+Tested on 18 Oct 2026: the attack rehearsal (docs/ATTACK_REHEARSAL.md) and a regtest save/restore. Standard library only.
+"""
+import argparse
+import json
+import sys
+import urllib.request
+
+
+def call(rpc, method, params=None, path="json_rpc"):
+    if path == "json_rpc":
+        body = {"jsonrpc": "2.0", "id": "0", "method": method, "params": params or {}}
+    else:
+        body = params or {}
+    req = urllib.request.Request("http://%s/%s" % (rpc, path), data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=120) as r:
+        out = json.loads(r.read().decode())
+    if path == "json_rpc":
+        if "error" in out:
+            raise SystemExit("%s: %s" % (method, out["error"].get("message")))
+        return out["result"]
+    return out
+
+
+def save(a):
+    chains = call(a.rpc, "get_alternate_chains").get("chains", [])
+    if not chains:
+        sys.exit("This node has no side chain: nothing to save (was it restarted since the rewrite?).")
+    def work(c):  # wide_difficulty is a hex string such as "0xb"
+        w = c.get("wide_difficulty")
+        return int(w, 16) if isinstance(w, str) and w else int(c.get("difficulty") or 0)
+    c = max(chains, key=lambda c: (c["length"], work(c)))
+    blocks = []
+    for h in reversed(c["block_hashes"]):           # the node lists them newest first
+        b = call(a.rpc, "get_block", {"hash": h})
+        blocks.append({"height": b["block_header"]["height"], "hash": h, "blob": b["blob"]})
+    blocks.sort(key=lambda b: b["height"])
+    heights = [b["height"] for b in blocks]
+    if heights != list(range(heights[0], heights[0] + len(heights))):
+        sys.exit("The side chain has gaps; not saved.")
+    with open(a.out, "w") as f:
+        json.dump({"split_after": heights[0] - 1, "parent": c.get("main_chain_parent_block"), "blocks": blocks}, f)
+    print("Saved %d side-chain blocks (heights %d to %d) to %s" % (len(blocks), heights[0], heights[-1], a.out))
+    if len(chains) > 1:
+        print("Note: %d side chains exist; saved the longest. Check it is the honest one." % len(chains))
+    print("First block after the split, the emergency checkpoint to publish:")
+    print("  %d:%s" % (blocks[0]["height"], blocks[0]["hash"]))
+
+
+def restore(a):
+    with open(a.file) as f:
+        d = json.load(f)
+    blocks = d["blocks"]
+    first = blocks[0]["height"]
+    height = call(a.rpc, "get_info")["height"]
+    if height > first:
+        r = call(a.rpc, "pop_blocks", {"nblocks": height - first}, path="pop_blocks")
+        print("pop_blocks: %s, height now %s" % (r.get("status"), r.get("height")))
+    ok = 0
+    for b in blocks:
+        r = call(a.rpc, "submit_block", [b["blob"]])
+        status = r.get("status")
+        if status != "OK":
+            sys.exit("Block %d not accepted (%s). If BUSY: restart the node with --offline, run this again, "
+                     "then restart it normally." % (b["height"], status))
+        ok += 1
+    info = call(a.rpc, "get_info")
+    print("Resubmitted %d honest blocks; node height %d, top %s" % (ok, info["height"], info["top_block_hash"]))
+    if info["top_block_hash"] != blocks[-1]["hash"]:
+        print("The node did not move to the saved blocks: it probably still holds them as side blocks. "
+              "Restart it with --offline (that drops them) and run restore again.")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("save")
+    s.add_argument("--rpc", default="127.0.0.1:29971")
+    s.add_argument("--out", default="honest-blocks.json")
+    r = sub.add_parser("restore")
+    r.add_argument("file")
+    r.add_argument("--rpc", default="127.0.0.1:29971")
+    a = ap.parse_args()
+    save(a) if a.cmd == "save" else restore(a)
+
+
+if __name__ == "__main__":
+    main()

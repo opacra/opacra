@@ -1,6 +1,9 @@
 """Tiny JSON-RPC helpers for opacrad / opacra-wallet-rpc (stdlib only)."""
+import http.client
 import json
+import os
 import time
+import urllib.parse
 import urllib.request
 
 ATOMIC = 10 ** 12
@@ -12,6 +15,15 @@ class RPCError(Exception):
 
 def _post(url, payload, timeout=120):
     data = json.dumps(payload).encode()
+    src = os.environ.get("OPACRA_RPC_SOURCE_IP")
+    if src:
+        # connect from a chosen loopback address (rehearsals: a node that blocks a misbehaving
+        # 127.0.0.1 peer would otherwise block this client too)
+        u = urllib.parse.urlsplit(url)
+        c = http.client.HTTPConnection(u.hostname, u.port, timeout=timeout, source_address=(src, 0))
+        c.request("POST", u.path, body=data, headers={"Content-Type": "application/json"})
+        r = c.getresponse()
+        return json.loads(r.read().decode())
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     # never route localhost RPC through a proxy
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
