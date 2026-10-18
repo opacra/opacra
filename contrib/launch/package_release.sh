@@ -8,6 +8,7 @@ OUT="${1:-$ROOT/dist}"
 VERSION="$(grep -o 'DEF_MONERO_VERSION "[0-9.]*"' "$ROOT/src/version.cpp.in" | head -1 | cut -d'"' -f2)"
 BASE_COMMIT="4f92268"   # Monero v0.18.5.1
 mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"   # absolute: later steps run from other folders (CI passes "dist")
 cd "$ROOT"
 
 # 1. binaries (dynamically linked, built on Ubuntu 24.04 x86_64). They must come from a
