@@ -54,6 +54,7 @@ chain data) or send fake ones, so share it only with seed operators. To change i
 | `/etc/opacra/opacra.conf` | Gets `reorg-notify=` and `block-rate-notify=` lines |
 | `/var/lib/opacra/alert/alerts.log` | Every event, including small reorgs that were not sent |
 | `opacra-alert status` | What the watchdog sees now |
+| Mainnet next to testnet | `/etc/opacra/alert-mainnet.conf`, state in `/var/lib/opacra/alert-mainnet`, watchdog `opacra-alert-mainnet.timer`, command `opacra-alert-mainnet status` (same topic) |
 
 ## Tested (11 Oct 2026)
 

@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Provision an Ubuntu 24.04 server as an Opacra seed node.
-#   scp opacra-v<version>-linux-x64.tar.gz seed-node-setup.sh opacrad.service opacra.conf root@VPS:
+#   scp opacra-v<version>-linux-x64.tar.gz seed-node-setup.sh instance-names.sh opacrad.service opacra.conf root@VPS:
 #   ssh root@VPS 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz [mainnet|testnet|stagenet] [alert topic]'
 # If install-alerts.sh and its files (opacra-alert, opacra-alert.service, opacra-alert.timer)
 # are copied too, phone alerts are set up as well; pass the topic of your other seeds to
 # share one alert feed.
 # Needs: 2+ vCPU, 4 GB RAM, 50+ GB SSD.
 # Opens the network's P2P port (mainnet 29960, testnet 29970, stagenet 29980) if ufw is active.
+# One server can run several networks: run this once per network. Testnet is the service
+# "opacrad"; mainnet is "opacrad-mainnet", with its own config, data folder, log and alerts
+# (instance-names.sh).
 set -euo pipefail
 TARBALL=${1:?usage: seed-node-setup.sh <opacra release tarball> [mainnet|testnet|stagenet]}
 NETWORK=${2:-mainnet}
@@ -18,6 +21,8 @@ case "$NETWORK" in
   stagenet) P2P=29980; RPC=29981; ZMQ=29982; NETFLAG="stagenet=1" ;;
   *) echo "network must be mainnet, testnet or stagenet" >&2; exit 1 ;;
 esac
+cd "$(dirname "$0")"
+. ./instance-names.sh
 
 . /etc/os-release
 if [ "${VERSION_ID:-}" != "24.04" ]; then
@@ -31,30 +36,37 @@ apt-get install -y -qq chrony ufw libboost-chrono1.83.0t64 libboost-filesystem1.
 systemctl enable --now chrony
 
 id opacra >/dev/null 2>&1 || useradd --system --home /var/lib/opacra --shell /usr/sbin/nologin opacra
-mkdir -p /opt/opacra /etc/opacra /var/lib/opacra
+mkdir -p /opt/opacra /etc/opacra /var/lib/opacra "$DATADIR"
+case "$TARBALL" in /*) ;; *) TARBALL="$OLDPWD/$TARBALL" ;; esac
+# all networks share one copy of the programs; a running node keeps its old copy until restarted
 tar -xzf "$TARBALL" -C /opt/opacra --strip-components=1
 
-if [ ! -e /etc/opacra/opacra.conf ]; then
-  # the example config is for mainnet; switch ports and network for testnet/stagenet
-  sed -e "s/29960/$P2P/g; s/29961/$RPC/g; s/29962/$ZMQ/g; s/29963/$((ZMQ + 1))/g; s/29969/$((P2P + 9))/g" opacra.conf > /etc/opacra/opacra.conf
+if [ ! -e "$NODECONF" ]; then
+  # the example config is for mainnet; switch ports, folders and network
+  sed -e "s/29960/$P2P/g; s/29961/$RPC/g; s/29962/$ZMQ/g; s/29963/$((ZMQ + 1))/g; s/29969/$((P2P + 9))/g" \
+      -e "s|^data-dir=.*|data-dir=$DATADIR|; s|^log-file=.*|log-file=$LOGFILE|" opacra.conf > "$NODECONF"
   if [ -n "$NETFLAG" ]; then
-    printf '\n# network\n%s\n' "$NETFLAG" >> /etc/opacra/opacra.conf
+    printf '\n# network\n%s\n' "$NETFLAG" >> "$NODECONF"
   fi
 else
-  echo "/etc/opacra/opacra.conf already exists; leaving it unchanged" >&2
+  echo "$NODECONF already exists; leaving it unchanged" >&2
 fi
 chown -R opacra:opacra /var/lib/opacra
-cp opacrad.service /etc/systemd/system/opacrad.service
+# the service: the shipped unit, pointed at this network's config; the alert script it calls
+# on reorganisations reads this network's alert config
+sed -e "s|/etc/opacra/opacra.conf|$NODECONF|; s|^Description=.*|Description=Opacra $NETWORK node ($SERVICE)|" \
+    -e "s|^\[Service\]|[Service]\nEnvironment=OPACRA_ALERT_CONF=$ALERTCONF|" \
+    opacrad.service > "/etc/systemd/system/$SERVICE.service"
 # reliable DNS for the emergency checkpoints: the node's built-in list of public DNS servers
 # is old (lessons learned, 12 Oct 2026); kept if it already exists
-mkdir -p /etc/systemd/system/opacrad.service.d
-if [ ! -e /etc/systemd/system/opacrad.service.d/dns.conf ]; then
-  printf '[Service]\nEnvironment=DNS_PUBLIC=tcp://1.1.1.1\n' > /etc/systemd/system/opacrad.service.d/dns.conf
+mkdir -p "/etc/systemd/system/$SERVICE.service.d"
+if [ ! -e "/etc/systemd/system/$SERVICE.service.d/dns.conf" ]; then
+  printf '[Service]\nEnvironment=DNS_PUBLIC=tcp://1.1.1.1\n' > "/etc/systemd/system/$SERVICE.service.d/dns.conf"
 fi
 systemctl daemon-reload
-systemctl enable opacrad
+systemctl enable "$SERVICE"
 # restart (not just start) so that re-running this script with a new package upgrades the node
-systemctl restart opacrad
+systemctl restart "$SERVICE"
 sleep 5
 
 # Firewall: only add the rule. Enabling ufw here could cut off other services on a
@@ -67,7 +79,10 @@ fi
 
 sleep 5
 /opt/opacra/opacrad --rpc-bind-port "$RPC" status || true
-echo "Opacra $NETWORK seed node running. Logs: journalctl -u opacrad -f  |  /var/lib/opacra/opacra.log"
+echo "Opacra $NETWORK seed node running as $SERVICE. Logs: journalctl -u $SERVICE -f  |  $LOGFILE"
+for other in $(systemctl list-units --type=service --all --no-legend 'opacrad*' 2>/dev/null | awk '{print $1}' | sed 's/\.service$//'); do
+  [ "$other" = "$SERVICE" ] || echo "Also on this server: $other. It runs the previous programs until: systemctl restart $other" >&2
+done
 if [ -f install-alerts.sh ]; then
   bash install-alerts.sh "$NETWORK" $ALERT_TOPIC
 else

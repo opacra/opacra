@@ -4,7 +4,10 @@
 #   ssh root@SEED 'bash install-alerts.sh testnet'            # first seed: makes a new alert topic
 #   ssh root@SEED 'bash install-alerts.sh testnet TOPIC'      # more seeds: same topic, one phone feed
 # Safe to run again (e.g. after editing /etc/opacra/alert.conf or to upgrade the script).
-# Restarts opacrad once, so that it starts calling the alert script.
+# Restarts the node once, so that it starts calling the alert script. Each network on the
+# server has its own alert config and watchdog (instance-names.sh): testnet uses
+# /etc/opacra/alert.conf and opacra-alert; mainnet /etc/opacra/alert-mainnet.conf, the
+# watchdog opacra-alert-mainnet, and the command `opacra-alert-mainnet status`.
 set -euo pipefail
 NETWORK=${1:-mainnet}
 TOPIC=${2:-}
@@ -18,17 +21,20 @@ if [ -n "$TOPIC" ] && ! [[ "$TOPIC" =~ ^[A-Za-z0-9_-]{8,64}$ ]]; then
   echo "the topic must be 8-64 letters, digits, - or _" >&2; exit 1
 fi
 cd "$(dirname "$0")"
+. ./instance-names.sh
 for f in opacra-alert opacra-alert.service opacra-alert.timer; do
   [ -f "$f" ] || { echo "missing $f: copy it next to install-alerts.sh" >&2; exit 1; }
 done
-[ -f /etc/opacra/opacra.conf ] || { echo "/etc/opacra/opacra.conf not found: run seed-node-setup.sh first" >&2; exit 1; }
+[ -f "$NODECONF" ] || { echo "$NODECONF not found: run seed-node-setup.sh for $NETWORK first" >&2; exit 1; }
 command -v python3 >/dev/null || { apt-get update -qq && apt-get install -y -qq python3; }
 
 install -m 755 opacra-alert /usr/local/bin/opacra-alert
-install -d -o opacra -g opacra -m 750 /var/lib/opacra/alert
+install -d -o opacra -g opacra -m 750 "$STATEDIR"
 
-CONF=/etc/opacra/alert.conf
+CONF="$ALERTCONF"
 if [ ! -e "$CONF" ]; then
+  # another network on this server already has alerts: reuse its topic, one feed on the phone
+  [ -n "$TOPIC" ] || TOPIC=$(sed -n 's/^NTFY_TOPIC=//p' /etc/opacra/alert*.conf 2>/dev/null | head -1)
   [ -n "$TOPIC" ] || TOPIC="opacra-$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   cat > "$CONF" <<EOF
 # Opacra seed alerts (read by /usr/local/bin/opacra-alert). Anyone who knows the topic can
@@ -37,6 +43,8 @@ NETWORK=$NETWORK
 NTFY_TOPIC=$TOPIC
 RPC=127.0.0.1:$RPC
 EXPLORER=$EXPLORER
+LOG_FILE=$LOGFILE
+STATE_DIR=$STATEDIR
 # NAME=seed1                 # shown in each alert (default: this server's hostname)
 # REORG_ALERT_DEPTH=11       # alert when a reorganisation replaces this many blocks or more
 # RATE_PERSIST_MINUTES=30    # alert when the block rate stays unusual for this long
@@ -52,7 +60,6 @@ chown root:opacra "$CONF"
 chmod 640 "$CONF"
 
 # let opacrad call the script (one line each, replaced if already there)
-NODECONF=/etc/opacra/opacra.conf
 sed -i '/^reorg-notify=/d; /^block-rate-notify=/d; /^# Phone alerts (install-alerts.sh)$/d' "$NODECONF"
 [ -z "$(tail -c1 "$NODECONF")" ] || echo >> "$NODECONF"
 cat >> "$NODECONF" <<'EOF'
@@ -61,12 +68,21 @@ reorg-notify=/usr/local/bin/opacra-alert reorg %s %h %n %d
 block-rate-notify=/usr/local/bin/opacra-alert block-rate %t %b %e
 EOF
 
-cp opacra-alert.service opacra-alert.timer /etc/systemd/system/
+# this network's watchdog, reading this network's alert config
+sed -e "s|^\[Service\]|[Service]\nEnvironment=OPACRA_ALERT_CONF=$CONF|; s|opacrad.service|$SERVICE.service|; s|^Description=.*|Description=Opacra $NETWORK alert watchdog|" \
+    opacra-alert.service > "/etc/systemd/system/$ALERTUNIT.service"
+sed -e "s|^Description=.*|Description=Opacra $NETWORK alert watchdog, every 5 minutes|" \
+    opacra-alert.timer > "/etc/systemd/system/$ALERTUNIT.timer"
+if [ -n "$SUFFIX" ]; then
+  # a short command for this network: opacra-alert-mainnet status | test
+  printf '#!/bin/sh\nOPACRA_ALERT_CONF=%s exec /usr/local/bin/opacra-alert "$@"\n' "$CONF" > "/usr/local/bin/$ALERTUNIT"
+  chmod 755 "/usr/local/bin/$ALERTUNIT"
+fi
 systemctl daemon-reload
-systemctl enable --now opacra-alert.timer >/dev/null
-systemctl restart opacrad
+systemctl enable --now "$ALERTUNIT.timer" >/dev/null
+systemctl restart "$SERVICE"
 sleep 8
-systemctl is-active --quiet opacrad || { echo "opacrad did not restart: journalctl -u opacrad -n 30" >&2; exit 1; }
+systemctl is-active --quiet "$SERVICE" || { echo "$SERVICE did not restart: journalctl -u $SERVICE -n 30" >&2; exit 1; }
 
 TOPIC=$(sed -n 's/^NTFY_TOPIC=//p' "$CONF")
 echo
@@ -76,5 +92,5 @@ echo "    $TOPIC"
 echo
 echo "On your phone: install the free app \"ntfy\" (Play Store or App Store), tap +,"
 echo "type the topic above exactly, leave the server as ntfy.sh, and tap Subscribe."
-echo "Then send a test from this server:   opacra-alert test"
-echo "What the watchdog sees right now:    opacra-alert status"
+echo "Then send a test from this server:   $ALERTUNIT test"
+echo "What the watchdog sees right now:    $ALERTUNIT status"

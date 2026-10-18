@@ -102,14 +102,23 @@ python3 coinid.py genesis --reward 2384185791015 \
 On each Ubuntu 24.04 VPS:
 
 ```bash
-scp dist/opacra-v<version>-linux-x64.tar.gz contrib/launch/{seed-node-setup.sh,opacrad.service,opacra.conf,install-alerts.sh,opacra-alert,opacra-alert.service,opacra-alert.timer} root@SEED:
-ssh root@SEED 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz'            # mainnet
-ssh root@SEED 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz testnet'    # public testnet
+# on the seed, from the release package's launch-kit folder (it has every file needed):
+bash seed-node-setup.sh /root/opacra-v<version>-linux-x64.tar.gz testnet    # public testnet: service opacrad
+bash seed-node-setup.sh /root/opacra-v<version>-linux-x64.tar.gz mainnet    # mainnet: service opacrad-mainnet
 ```
 
+One server runs several networks side by side; run the script once per network. Testnet
+keeps the original names (`opacrad`, `/etc/opacra/opacra.conf`, `/var/lib/opacra/opacra.log`,
+`opacra-alert`). Mainnet gets its own: `opacrad-mainnet`, `/etc/opacra/opacra-mainnet.conf`,
+data in `/var/lib/opacra/mainnet`, log `/var/lib/opacra/opacra-mainnet.log`, alerts in
+`/etc/opacra/alert-mainnet.conf` with the command `opacra-alert-mainnet status` (and it
+reuses the server's existing alert topic). All networks share the programs in `/opt/opacra`:
+after installing a new package for one network, restart the others too.
+
 The first seed prints a phone-alert topic (`docs/ALERTS.md`); give it to the others as a third
-argument so all seeds share one alert feed. Edit `/etc/opacra/opacra.conf` on each seed and add the other seeds as
-`add-priority-node=IP:29960` (testnet: `IP:29970`). Check with `journalctl -u opacrad -f`.
+argument so all seeds share one alert feed. The seeds are built into the software
+(`src/coin_network.h`), so they find each other. Check with `journalctl -u opacrad -f`
+(mainnet: `-u opacrad-mainnet`).
 
 ## 6. Release binaries
 

@@ -1,0 +1,56 @@
+diff --git a/src/pool.c b/src/pool.c
+index 8ad39f2..25fd52a 100644
+--- a/src/pool.c
++++ b/src/pool.c
+@@ -208,6 +208,7 @@ typedef struct block_template_t
+     char seed_hash[65];
+     char next_seed_hash[65];
+     uint64_t tx_count;
++    uint64_t expected_reward; /* Opacra: the miner's share of the coinbase */
+ } block_template_t;
+ 
+ typedef struct job_t
+@@ -1056,7 +1057,15 @@ process_blocks(block_t *blocks, size_t count)
+                 continue;
+             }
+             nb.status |= BLOCK_UNLOCKED;
+-            nb.reward = ib->reward;
++            /* Opacra: pay out what the pool received (the template's
++               expected_reward, stored at submission), never the header
++               reward, which includes the development fund output */
++            if (nb.reward == 0 || nb.reward > ib->reward)
++            {
++                log_warn("Block %"PRIu64" has no stored miner reward; "
++                        "using the header reward", nb.height);
++                nb.reward = ib->reward;
++            }
+             if (!*config.upstream_host)
+                 rc = payout_block(&nb, txn);
+             if (*config.upstream_host || rc == 0)
+@@ -1577,6 +1586,7 @@ response_to_block_template(json_object *result,
+     JSON_GET_OR_WARN(height, result, json_type_int);
+     JSON_GET_OR_WARN(prev_hash, result, json_type_string);
+     JSON_GET_OR_WARN(reserved_offset, result, json_type_int);
++    JSON_GET_OR_WARN(expected_reward, result, json_type_int);
+ 
+     block_template->hashing_blob = strdup(json_object_get_string(
+                 blockhashing_blob));
+@@ -1588,6 +1598,10 @@ response_to_block_template(json_object *result,
+     block_template->height = json_object_get_int64(height);
+     strncpy(block_template->prev_hash, json_object_get_string(prev_hash), 64);
+     block_template->reserved_offset = json_object_get_int(reserved_offset);
++    /* Opacra: 5% of each block's new coins goes to the development fund as a
++       second coinbase output. The header's "reward" is the whole coinbase;
++       expected_reward is what this pool's wallet actually receives. */
++    block_template->expected_reward = json_object_get_int64(expected_reward);
+ 
+     uint8_t major_version = *block_template->block_blob;
+     uint8_t pow_variant = major_version >= 7 ? major_version - 6 : 0;
+@@ -3543,6 +3557,7 @@ post_hash:
+         bin_to_hex(block_hash, 32, b->hash);
+         strncpy(b->prev_hash, bt->prev_hash, 64);
+         b->difficulty = bt->difficulty;
++        b->reward = bt->expected_reward; /* Opacra: miner share only */
+         b->status = BLOCK_LOCKED;
+         b->timestamp = now;
+         if (upstream_event)
