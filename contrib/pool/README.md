@@ -43,6 +43,19 @@ Start from the pool's own `pool.conf` and change:
 | `wallet-rpc-port` | your `opacra-wallet-rpc` port |
 | `pool-wallet` | the pool wallet's address (mainnet starts `Pa`) |
 | `pool-start-diff` | start low, e.g. 1000; the pool retargets each miner |
+| `block-notified` | **1**, together with the node option below |
+
+**New blocks must reach the pool at once.** Opacra blocks come every 30 seconds, but by
+default the pool only checks for a new block every 45 seconds (`template-timeout`). In the
+test that meant miners kept working on blocks that were already out of date, and the pool
+found the same height up to four times. Start the node with
+
+```
+--block-notify '/usr/bin/pkill -USR1 -x monero-pool'
+```
+
+and set `block-notified = 1`: the node then signals the pool the moment a block arrives, and
+the pool fetches a fresh template straight away (one block per height in the test).
 
 Run the node with `--enforce-dns-checkpointing` like the seeds, so the pool never builds on
 a chain the emergency checkpoints have ruled out.
