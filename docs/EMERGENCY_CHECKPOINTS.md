@@ -64,6 +64,23 @@ unreadable" means the same thing. Known causes:
 - **The two domains disagree, or a record is missing:** `dig +short TXT testpoints.opacra.org`
   and `.com` must print the same lines.
 
+## Daily checkpoints (first 2-4 weeks of mainnet)
+
+One routine checkpoint a day caps how much history an attack could quietly rewrite while the
+network is small. About 5 minutes, from the PC (Opacra Ubuntu tab):
+
+```
+cd ~/opacra && contrib/launch/daily-checkpoint --mainnet --node local:127.0.0.1:29961 --node ssh:opacra-seed1:127.0.0.1:29961
+```
+
+It picks a block about 6 hours deep, reads its hash from both nodes and refuses if they
+disagree or are more than 10 blocks apart. It prints the record, the two `dig` checks and a line
+for the website's checkpoint log. Then follow steps 4-6 of the emergency checklist below:
+both domains, TTL 1 min, check with dig, and confirm the seed says `DNS checkpoint enforced`.
+Keep the earlier daily records; remove them all at once after a release hard-codes them. Stop
+the daily routine at that point (white paper: "Protecting a young chain"). Rehearse it on the
+testnet first (`--node local:127.0.0.1:29971 --node ssh:opacra-seed1:127.0.0.1:29971`, no `--mainnet`).
+
 ## Emergency checklist
 
 Follow it in order, even when it seems obvious. A wrong checkpoint is worse than none:

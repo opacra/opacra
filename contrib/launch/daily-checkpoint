@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Daily rolling checkpoint: choose a buried block, confirm it on two nodes, print the record.
+
+For the first weeks after launch, one checkpoint a day caps how much history an attack could
+quietly rewrite (road-to-mainnet plan, 17 Oct 2026). This script does the part that must not go
+wrong: it picks a block about 6 hours deep, reads its hash from two independent nodes, refuses
+if they disagree, and prints the exact TXT record to paste into both domains.
+
+  daily-checkpoint --node local:127.0.0.1:29971 --node ssh:opacra-seed1:127.0.0.1:29971
+  daily-checkpoint --mainnet --node local:127.0.0.1:29961 --node ssh:opacra-seed1:127.0.0.1:29961
+
+A node is  local:HOST:PORT  (its RPC reachable from here) or  ssh:SSH_HOST:HOST:PORT  (the RPC on
+that server, read with curl over ssh). Options: --depth BLOCKS (default 720, 6 hours at 30 s).
+
+Publishing (docs/EMERGENCY_CHECKPOINTS.md, steps 4-6): in Namecheap add the printed record to
+BOTH domains with TTL 1 min, check with the printed dig commands, then confirm on the seed that
+it says "DNS checkpoint enforced". Keep earlier daily records until a release hard-codes them.
+Standard library only.
+"""
+import argparse
+import json
+import subprocess
+import sys
+import time
+import urllib.request
+
+ROUND = 10  # choose a height ending in 0: easier to read out and compare
+
+
+def rpc(node, method, params):
+    body = json.dumps({"jsonrpc": "2.0", "id": "0", "method": method, "params": params})
+    kind, rest = node.split(":", 1)
+    if kind == "local":
+        req = urllib.request.Request("http://%s/json_rpc" % rest, data=body.encode(),
+                                     headers={"Content-Type": "application/json"})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(req, timeout=30) as r:
+            out = json.loads(r.read().decode())
+    elif kind == "ssh":
+        host, addr = rest.split(":", 1)
+        cmd = ["ssh", "-o", "BatchMode=yes", host, "curl", "-s", "--noproxy", "'*'",
+               "http://%s/json_rpc" % addr, "-H", "'Content-Type: application/json'", "-d", "'%s'" % body]
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if p.returncode != 0 or not p.stdout.strip():
+            raise RuntimeError("ssh %s failed: %s" % (host, p.stderr.strip() or "no answer"))
+        out = json.loads(p.stdout)
+    else:
+        raise SystemExit("node must start with local: or ssh: (%s)" % node)
+    if "error" in out:
+        raise RuntimeError("%s: %s" % (method, out["error"].get("message")))
+    return out["result"]
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--node", action="append", required=True, help="local:HOST:PORT or ssh:SSH_HOST:HOST:PORT (give two)")
+    ap.add_argument("--depth", type=int, default=720)
+    ap.add_argument("--mainnet", action="store_true", help="mainnet record name (checkpoints) instead of testnet (testpoints)")
+    a = ap.parse_args()
+    if len(a.node) < 2:
+        sys.exit("Give two independent nodes (--node ... --node ...): one node alone could be on a wrong chain.")
+
+    infos = []
+    for n in a.node:
+        try:
+            infos.append(rpc(n, "get_info", {}))
+        except Exception as e:  # noqa: BLE001
+            sys.exit("Cannot read %s: %s" % (n, e))
+    heights = [i["height"] for i in infos]
+    for n, i in zip(a.node, infos):
+        if not i.get("synchronized", True) or i.get("busy_syncing"):
+            sys.exit("%s is not synchronised (height %d); wait and run again." % (n, i["height"]))
+    if max(heights) - min(heights) > 10:
+        sys.exit("The nodes are %d blocks apart (%s): one is behind or on another chain. Not choosing a block."
+                 % (max(heights) - min(heights), ", ".join(map(str, heights))))
+    h = (min(heights) - 1 - a.depth) // ROUND * ROUND
+    if h <= 0:
+        sys.exit("The chain is not yet %d blocks long." % a.depth)
+
+    hashes, headers = [], []
+    for n in a.node:
+        hd = rpc(n, "get_block_header_by_height", {"height": h})["block_header"]
+        hashes.append(hd["hash"])
+        headers.append(hd)
+    if len(set(hashes)) != 1:
+        print("STOP: the nodes disagree about block %d:" % h)
+        for n, x in zip(a.node, hashes):
+            print("  %-45s %s" % (n, x))
+        print("Do not publish anything. One node is on another chain: check both, and the explorer.")
+        sys.exit(1)
+
+    age_h = (time.time() - headers[0]["timestamp"]) / 3600
+    name = "checkpoints" if a.mainnet else "testpoints"
+    record = "%d:%s" % (h, hashes[0])
+    print("Both nodes agree on block %d (mined about %.1f hours ago; tips at %s)." % (h, age_h, ", ".join(map(str, heights))))
+    print()
+    print("Add this TXT record to BOTH opacra.org and opacra.com (Host: %s, TTL: 1 min):" % name)
+    print()
+    print("    " + record)
+    print()
+    print("Then check both answer with it:")
+    print("    dig +short TXT %s.opacra.org @1.1.1.1" % name)
+    print("    dig +short TXT %s.opacra.com @1.1.1.1" % name)
+    print("For the website's checkpoint log:")
+    print("    %s UTC  block %d  %s  daily checkpoint" % (time.strftime("%Y-%m-%d %H:%M", time.gmtime()), h, hashes[0]))
+
+
+if __name__ == "__main__":
+    main()
