@@ -1,0 +1,68 @@
+# Builds the Windows zip and the Linux package from this repository, with the same scripts the
+# releases are built with locally (contrib/windows/build-windows.sh, contrib/launch/package_release.sh).
+# Needed for code signing: SignPath signs only binaries that a public CI workflow built from the
+# public source. Runs on version tags and by hand (Actions tab, "Run workflow").
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360   # the Windows libraries take 2-3 hours the first time; cached after that
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0        # the version string carries the commit
+      - name: Cache the Windows libraries (contrib/depends)
+        uses: actions/cache@v4
+        with:
+          path: |
+            contrib/depends/built
+            contrib/depends/sources
+            contrib/depends/x86_64-w64-mingw32
+          key: depends-win64-${{ hashFiles('contrib/depends/packages/*.mk', 'contrib/depends/hosts/*.mk', 'contrib/depends/Makefile', 'contrib/depends/funcs.mk') }}
+      - name: Build and package
+        run: JOBS=$(nproc) contrib/windows/build-windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opacra-win-x64
+          path: |
+            dist/*-win-x64.zip
+            dist/*-win-x64.zip.sha256
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake pkg-config git \
+            libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev \
+            libreadline-dev libexpat1-dev libpgm-dev libhidapi-dev libusb-1.0-0-dev \
+            libprotobuf-dev protobuf-compiler libudev-dev libboost-all-dev
+      - name: Build (portable x86-64) and run the consensus tests
+        run: |
+          cmake -S . -B build/portable -DCMAKE_BUILD_TYPE=Release -DARCH=x86-64 -DBUILD_TESTS=OFF -DUSE_DEVICE_TREZOR=OFF
+          cmake --build build/portable --target daemon simplewallet wallet_rpc_server opacra_consensus_tests -j"$(nproc)"
+          build/portable/bin/opacra_consensus_tests
+      - name: Package
+        run: contrib/launch/package_release.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opacra-linux-x64
+          path: dist/*-linux-x64.tar.gz
+          if-no-files-found: error
