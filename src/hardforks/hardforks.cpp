@@ -46,8 +46,8 @@ const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainne
 const uint64_t mainnet_hard_fork_version_1_till = 0;
 
 const hardfork_t testnet_hard_forks[] = {
-  { 1, 0, 0, 1790553599 },
-  { 16, 1, 0, 1790553600 },
+  { 1, 0, 0, 1792324799 },
+  { 16, 1, 0, 1792324800 },
 };
 const size_t num_testnet_hard_forks = sizeof(testnet_hard_forks) / sizeof(testnet_hard_forks[0]);
 const uint64_t testnet_hard_fork_version_1_till = 0;

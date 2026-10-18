@@ -945,9 +945,8 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   size_t target = get_difficulty_target();
   difficulty_type diff = next_difficulty(timestamps, difficulties, target);
   // Opacra (security audit): block 1 costs the startup guess, not 1, so no height near
-  // genesis is free. The public testnet is exempt: testnet 2's block 1 (10 Oct 2026) was
-  // mined at difficulty 1 under this rule, so removing the exemption would split it.
-  if (timestamps.empty() && height == 1 && m_nettype != TESTNET)
+  // genesis is free. Every network, testnet 3 included (testnet 2's exemption is gone).
+  if (timestamps.empty() && height == 1)
     diff = DIFFICULTY_STARTUP_GUESS;
 
   CRITICAL_REGION_LOCAL1(m_difficulty_lock);
@@ -1007,7 +1006,7 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
     difficulty_type recalculated_diff = next_difficulty(timestamps, difficulties, target);
     // Opacra (security audit): same block-1 rule as get_difficulty_for_next_block, or the
     // weekly recheck would "repair" every cumulative difficulty from block 1 onwards
-    if (height == 1 && m_nettype != TESTNET)
+    if (height == 1)
       recalculated_diff = DIFFICULTY_STARTUP_GUESS;
 
     boost::multiprecision::uint256_t recalculated_cum_diff_256 = boost::multiprecision::uint256_t(recalculated_diff) + last_cum_diff;
@@ -1312,9 +1311,9 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   // FIXME: This will fail if fork activation heights are subject to voting
   size_t target = get_ideal_hard_fork_version(bei.height) < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
 
-  // Opacra (security audit): block 1 costs the startup guess on every network but the
-  // public testnet, exactly as on the main chain (get_difficulty_for_next_block)
-  if (timestamps.empty() && bei.height == 1 && m_nettype != TESTNET)
+  // Opacra (security audit): block 1 costs the startup guess on every network, exactly as
+  // on the main chain (get_difficulty_for_next_block)
+  if (timestamps.empty() && bei.height == 1)
     return DIFFICULTY_STARTUP_GUESS;
 
   // calculate the difficulty target for the block and return it

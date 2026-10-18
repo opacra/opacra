@@ -70,10 +70,10 @@
 #define MONEY_SUPPLY                                    ((uint64_t)10000000 * (uint64_t)1000000000000) // 10M OPCA in atomic units
 #define EMISSION_SPEED_FACTOR_PER_BLOCK                 (22)
 #define TAIL_EMISSION_REWARD                            ((uint64_t)50000000000) // 0.05 OPCA per block (~52,600 OPCA/year)
-// Opacra launch slow start: block rewards ramp up linearly from 0 over the first
-// SLOW_START_BLOCKS blocks (~7 days), so nobody can capture a large share of
-// coins before the wider community has joined mining.
-#define SLOW_START_BLOCKS                               ((uint64_t)20160)
+// Opacra: no launch slow start. Full rewards from block 1 (decided 18 Oct 2026 on outside
+// advice: full rewards draw more hash power in the first week, when the chain is weakest).
+// The weekly difficulty recheck covers this many blocks (7 days at 30 s).
+#define DIFFICULTY_RECHECK_BLOCKS                       ((uint64_t)20160)
 
 // Opacra development fund: 5% of every block subsidy (the newly created coins, not
 // transaction fees), from block 1 onwards with no end date, including tail emission.
@@ -342,13 +342,14 @@ namespace config
     uint16_t const P2P_DEFAULT_PORT = 29970;
     uint16_t const RPC_DEFAULT_PORT = 29971;
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 29972;
-    // Opacra testnet 2, from 10 Oct 2026: a fresh chain with Opacra's own RandomX salt
-    // (RandomOPCA). New network ID and genesis, so nodes of the first public testnet
-    // (4-10 Oct 2026, v0.1.x, Monero's rx/0) never connect to it.
+    // Opacra testnet 3: mainnet's exact rules (no slow start, no testnet exemptions) on a
+    // fresh chain. Network ID and genesis come from contrib/coin-identity/make_genesis.py,
+    // the launch-day procedure, so testnet 2 and earlier nodes never connect to it.
+    // (The values below are from the 18 Oct 2026 practice run; replaced on launch day.)
     boost::uuids::uuid const NETWORK_ID = { {
-        0xDB, 0xE3, 0x82, 0xC4, 0xDB, 0xE4, 0x46, 0xC2, 0xC1, 0x5E, 0x53, 0x28, 0x82, 0xBE, 0xFE, 0x7E
+        0x0B, 0xEC, 0xAB, 0xDE, 0x40, 0x6D, 0xDD, 0xEB, 0xA0, 0xE6, 0x12, 0xC8, 0xCD, 0xD6, 0x2A, 0x0F
       } };
-    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b145023c29b60b40e17738c30facb391344338e51c253e4a4d1715685f02afd47e1791550175828ffe9ccd38f1544c790eb0d6f290bf275980989f3e775aaab2732bed981002324f706163726120746573746e657420322067656e65736973207c20323032362d31302d3130207c2052616e646f6d4f504341";
+    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b1450228d2e34a52baabd9b2d2895922b5917ab325fd5aefb8789df2c64f5e33db56d65701bcac966ca80f8b87b92db0a928c3666fdb2e9865440c81e4497989903b0a917e02344f706163726120746573746e657420332067656e65736973207c20323032362d31302d3138207c2070726163746963652072756e";
     uint32_t const GENESIS_NONCE = 10003;
     // Development fund: receives OPACRA_DEV_FUND_PERCENT of every block subsidy. Must be a
     // standard address. The project's offline testnet fund wallet (created 3 Oct 2026).

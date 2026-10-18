@@ -219,38 +219,12 @@ namespace cryptonote {
     return true;
   }
   //-----------------------------------------------------------------------------------------------
-  uint64_t apply_slow_start(uint64_t reward, uint64_t height)
-  {
-    // Opacra launch slow start: linear ramp from 0 to the full reward over SLOW_START_BLOCKS.
-    // The genesis block (height 0) is exempt; its output is unspendable anyway.
-    if (height == 0 || height >= SLOW_START_BLOCKS)
-      return reward;
-    uint64_t product_hi;
-    const uint64_t product_lo = mul128(reward, height, &product_hi);
-    uint64_t quotient_hi, quotient_lo;
-    div128_64(product_hi, product_lo, SLOW_START_BLOCKS, &quotient_hi, &quotient_lo, NULL, NULL);
-    assert(quotient_hi == 0);
-    return quotient_lo;
-  }
-  //-----------------------------------------------------------------------------------------------
   bool get_block_reward_at_height(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height)
   {
-    // Opacra: while the slow start runs the block reward is too small for Monero's
-    // oversized-block penalty to deter anything, so no block may enter the penalty
-    // zone (weight above the effective median) until the ramp has finished.
-    if (height > 0 && height < SLOW_START_BLOCKS)
-    {
-      const size_t effective_median = std::max<size_t>(median_weight, get_min_block_weight(version));
-      if (current_block_weight > effective_median)
-      {
-        MDEBUG("Block weight " << current_block_weight << " is above the median " << effective_median << " during the launch slow start");
-        return false;
-      }
-    }
-    if (!get_block_reward(median_weight, current_block_weight, already_generated_coins, reward, version))
-      return false;
-    reward = apply_slow_start(reward, height);
-    return true;
+    // Opacra: full reward from block 1 on every network (the launch slow start was removed on
+    // 18 Oct 2026). Monero's oversized-block penalty applies from block 1, as on Monero.
+    (void)height;
+    return get_block_reward(median_weight, current_block_weight, already_generated_coins, reward, version);
   }
   //------------------------------------------------------------------------------------
   uint8_t get_account_address_checksum(const public_address_outer_blob& bl)

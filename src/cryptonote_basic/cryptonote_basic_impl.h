@@ -80,9 +80,8 @@ namespace cryptonote {
   size_t get_min_block_weight(uint8_t version);
   size_t get_max_tx_size();
   bool get_block_reward(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version);
-  // Opacra: reward for a block at a given height, including the launch slow-start ramp.
-  // Consensus code (coinbase construction and validation) must use this function.
-  uint64_t apply_slow_start(uint64_t reward, uint64_t height);
+  // Opacra: reward for a block at a given height. Consensus code (coinbase construction and
+  // validation) uses this function, so a height-dependent rule can be added in one place.
   bool get_block_reward_at_height(size_t median_weight, size_t current_block_weight, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height);
 
   // Opacra development fund (see OPACRA_DEV_FUND_PERCENT in cryptonote_config.h).

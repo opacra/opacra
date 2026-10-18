@@ -265,7 +265,7 @@ struct options {
     {{ &testnet, &stagenet }},
     [](std::array<bool, 2> testnet_stagenet, bool defaulted, std::string val)->std::string {
       if (testnet_stagenet[0])
-        return (boost::filesystem::path(val) / "testnet2").string(); // Opacra: testnet 2 (RandomOPCA), so old testnet data never clashes
+        return (boost::filesystem::path(val) / "testnet3").string(); // Opacra: testnet 3 (mainnet rules), so older testnet data never clashes
       else if (testnet_stagenet[1])
         return (boost::filesystem::path(val) / "stagenet").string();
       return val;

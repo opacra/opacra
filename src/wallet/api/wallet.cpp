@@ -107,7 +107,7 @@ namespace {
       dir = dir.remove_filename();
       dir /= ".shared-ringdb";
       if (nettype == cryptonote::TESTNET)
-        dir /= "testnet2"; // Opacra testnet 2, as in wallet2.cpp
+        dir /= "testnet3"; // Opacra testnet 3, as in wallet2.cpp
       else if (nettype == cryptonote::STAGENET)
         dir /= "stagenet";
       return dir.string();

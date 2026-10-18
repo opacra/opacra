@@ -190,13 +190,17 @@ namespace cryptonote
     // or the helper script contrib/launch/make_checkpoint.sh.
     if (nettype == TESTNET)
     {
-      // testnet 2 (from 10 Oct 2026), read from the PC's node on 11 Oct 2026
-      ADD_CHECKPOINT2(0, "4ee1bdcec38cdd06ba40f9f0def2d6a260acfeb853fedd4de9fb40cc5b0562cf", "0x1");
-      ADD_CHECKPOINT2(2000, "9d484e6d15883cb1241d91ea6a23e94be03003ad373a9a03ac9e3c1000aa36f2", "0x85a95d1");
+      ADD_CHECKPOINT2(0, "b6c548f3f4b6c326f7422dbd5a01d532aa65fc5af7c954398539797141f0ca9a", "0x1");
+      // testnet 3: checkpoints are added once its genesis is final and the chain has grown
       return true;
     }
     if (nettype == STAGENET)
     {
+      return true;
+    }
+    if (nettype == MAINNET)
+    {
+      // mainnet: the genesis hash is added on launch day (contrib/coin-identity/make_genesis.py)
       return true;
     }
     return true;

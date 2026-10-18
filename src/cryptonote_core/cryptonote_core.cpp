@@ -106,7 +106,7 @@ namespace cryptonote
   , {{ &arg_testnet_on, &arg_stagenet_on, &arg_regtest_on }}
   , [](std::array<bool, 3> nets, bool defaulted, std::string val)->std::string {
       if (nets[0])
-        return (boost::filesystem::path(val) / "testnet2").string(); // Opacra: testnet 2 (RandomOPCA), so old testnet data never clashes
+        return (boost::filesystem::path(val) / "testnet3").string(); // Opacra: testnet 3 (mainnet rules), so old testnet data never clashes
       else if (nets[1])
         return (boost::filesystem::path(val) / "stagenet").string();
       else if (nets[2])
@@ -1887,7 +1887,7 @@ namespace cryptonote
     // checkpoints), so a full rescan would start near genesis and hold the chain lock
     // longer every week. Recheck only the last week of blocks.
     const uint64_t height = m_blockchain_storage.get_current_blockchain_height();
-    const uint64_t window = SLOW_START_BLOCKS; // 20,160 blocks = 7 days
+    const uint64_t window = DIFFICULTY_RECHECK_BLOCKS; // 20,160 blocks = 7 days
     if (height > window + 1)
       m_blockchain_storage.recalculate_difficulties(height - window);
     else
