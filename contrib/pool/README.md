@@ -74,4 +74,14 @@ xmrig -a rx/opca -o POOL:4242 -u <their Opacra address> -p x
 18 Oct 2026, private chain under mainnet rules, one node (`--offline`), opacra-wallet-rpc,
 the patched pool and Opacra XMRig (2 threads):
 
-(results recorded below once the run completes)
+- **Shares and blocks:** XMRig (`-a rx/opca`) shares accepted from the first minute; the pool's
+  RandomOPCA share check agreed with the node on every block. 85 blocks mined through the pool.
+- **Block notification:** without `--block-notify` the pool found the same height up to four
+  times (45-second polling); with it, one block per height and a fresh template within a second.
+- **Unlock and accounting:** blocks 1–29 unlocked after 60 confirmations and were credited.
+  Over those blocks the pool's wallet received 65.69 OPCA (the miner outputs; the fund
+  outputs went to the fund). The unpatched pool would have credited miners from 68.45 OPCA of
+  header rewards, more than it ever received; the patched pool credited 63.79 OPCA (fee and
+  the PPLNS window's start-up account for the rest).
+- **Payout:** the 10-minute payment round sent 63.79396339 OPCA (fee 0.0259) through
+  opacra-wallet-rpc; `check_tx_key` confirmed the miner's address received exactly that.
