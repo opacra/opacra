@@ -387,7 +387,9 @@ namespace cryptonote
 
     auto data_dir = boost::filesystem::path(m_config_folder);
 
-    if (m_nettype == MAINNET)
+    // Opacra: testnet loads its built-in checkpoints and checkpoints.json exactly as mainnet
+    // does (Monero skipped both on testnet), so testnet 3 rehearses mainnet's checkpoint rules
+    if (m_nettype == MAINNET || m_nettype == TESTNET)
     {
       cryptonote::checkpoints checkpoints;
       if (!checkpoints.init_default_checkpoints(m_nettype))

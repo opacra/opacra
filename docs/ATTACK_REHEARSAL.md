@@ -5,7 +5,29 @@ A 51% attack rehearsed on a private network running Opacra's real mainnet rules
 public testnet. The rehearsal must be repeated whenever consensus code changes (release
 gates, road-to-mainnet plan).
 
-## Result
+## Repeat on the release-candidate code (18 Oct 2026, afternoon)
+
+Repeated after the slow start was removed and the 10-minute checkpoint block and enforcing
+launchers were added (release gate: consensus code changed). Same three nodes, mainnet rules,
+the corrected procedure below.
+
+| Step | Result |
+|---|---|
+| Secret chain | Split at block 23; honest chain to 38, attacker to 56 with 51% more total work |
+| Detection | **Pass.** Alert within seconds: "chain rewritten 15 blocks deep … at block 23", priority 5 |
+| Save the honest blocks | **Pass**, `save-side-chain save` printed `23:8687af6e…`, the checkpoint to publish |
+| Checkpoint on the first honest block after the split | **Pass.** Seed and home node rolled back, refused the attacker's blocks |
+| Seed recovery with `save-side-chain restore` | **Failed first time, tool fixed.** The checkpoint rolls a node back 2 blocks *below* the split, and the saved file held only blocks from the split up, so blocks 21–22 were missing and the honest blocks were refused as orphans (the RPC still answered "OK"). `save` now also keeps the 10 shared blocks below the split and `restore` submits the missing ones first, then checks every block actually became the tip. With the fixed tool the seed returned to the honest tip (38, `f1b0bc06…`) |
+| 10-minute block | **Pass.** The seed blocked the attacker and the home node (which was still on the attacker's chain) for 10 minutes, not a day. The home node, now enforcing, reconnected on its own after the block expired, synced the honest chain and mined on. The attacker was blocked again every time it reconnected |
+| Honest chain continues | **Pass.** Seed and home node agreed through block 44 while the attacker pushed to 71 with more work |
+
+Notes: a node started with `--add-exclusive-node` refuses connections from peers not on its
+list (the seed had to list the attacker to receive its chain); on a shared loopback the seed
+also blocked 127.0.0.1, the address the other nodes connect from. Both are artefacts of the
+private network, not of Opacra. The workspace restarted once during the run; every node's data
+survived and the run carried on from there.
+
+## Result (first run, morning)
 
 | Step | Expected | Result |
 |---|---|---|
@@ -55,9 +77,11 @@ caught by those blocks. Nodes: S = seed (enforcing, alerts captured by a local
 2. Restart X with `--offline` (it can then mine without peers) and mine on X with most of the
    hash power while S mines with less, until X has more total work and S is 12+ blocks past
    the split.
-3. Save the honest blocks from S (`get_block` for every height after the split).
+3. After step 4, save the honest blocks from S: `contrib/launch/save-side-chain save`
+   (side blocks by hash, plus the 10 shared blocks below the split).
 4. Restart X connected to S: check S reorganises and the alert fires.
 5. Write a checkpoint on the first honest block after the split (`rehearsal_net.py checkpoint`)
    for S and H and restart them; check they refuse X, rejoin the honest chain and keep mining.
-6. Optional: repeat step 5 with a deeper checkpoint to see the stall, and recover the seed with
-   `pop_blocks` to the split plus `submit_block` of the saved honest blocks.
+   Recover a node stuck on the attacker's blocks: restart it with `--offline`,
+   `save-side-chain restore`, restart it normally.
+6. Check the block lasts 10 minutes (`get_bans` on S) and that H reconnects by itself after it.

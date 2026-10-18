@@ -19,12 +19,16 @@ anything:
         1. save   2. restart the node with --offline (this also drops its side blocks)
         3. restore   4. restart the node normally
 
-Tested on 18 Oct 2026: the attack rehearsal (docs/ATTACK_REHEARSAL.md) and a regtest save/restore. Standard library only.
+Tested on 18 Oct 2026: both attack rehearsals (docs/ATTACK_REHEARSAL.md; the second found and
+fixed the missing shared blocks) and a regtest save/restore. Standard library only.
 """
 import argparse
 import json
 import sys
 import urllib.request
+
+
+SHARED_BLOCKS = 10   # blocks below the split saved too
 
 
 def call(rpc, method, params=None, path="json_rpc"):
@@ -60,13 +64,35 @@ def save(a):
     heights = [b["height"] for b in blocks]
     if heights != list(range(heights[0], heights[0] + len(heights))):
         sys.exit("The side chain has gaps; not saved.")
+    # also the blocks both chains share just below the split: a node that enforces the
+    # checkpoint winds back 2 blocks below it, so restore needs these to reach the split
+    shared = []
+    for h in range(max(1, heights[0] - SHARED_BLOCKS), heights[0]):
+        b = call(a.rpc, "get_block", {"height": h})
+        shared.append({"height": h, "hash": b["block_header"]["hash"], "blob": b["blob"]})
     with open(a.out, "w") as f:
-        json.dump({"split_after": heights[0] - 1, "parent": c.get("main_chain_parent_block"), "blocks": blocks}, f)
-    print("Saved %d side-chain blocks (heights %d to %d) to %s" % (len(blocks), heights[0], heights[-1], a.out))
+        json.dump({"split_after": heights[0] - 1, "parent": c.get("main_chain_parent_block"), "shared": shared,
+                   "blocks": blocks}, f)
+    print("Saved %d side-chain blocks (heights %d to %d) and the %d shared blocks below them to %s" % (
+        len(blocks), heights[0], heights[-1], len(shared), a.out))
     if len(chains) > 1:
         print("Note: %d side chains exist; saved the longest. Check it is the honest one." % len(chains))
     print("First block after the split, the emergency checkpoint to publish:")
     print("  %d:%s" % (blocks[0]["height"], blocks[0]["hash"]))
+
+
+def submit(a, b):
+    r = call(a.rpc, "submit_block", [b["blob"]])
+    status = r.get("status")
+    if status != "OK":
+        sys.exit("Block %d not accepted (%s). If BUSY: restart the node with --offline, run this again, "
+                 "then restart it normally." % (b["height"], status))
+    # "OK" also covers a block the node only stored (as a side or orphan block): check it moved
+    top = call(a.rpc, "get_info")
+    if top["top_block_hash"] != b["hash"]:
+        sys.exit("Block %d was not added to the chain (node height %d, top %s). If the node still holds the "
+                 "saved blocks as side blocks: restart it with --offline (that drops them) and run restore "
+                 "again." % (b["height"], top["height"], top["top_block_hash"]))
 
 
 def restore(a):
@@ -78,19 +104,22 @@ def restore(a):
     if height > first:
         r = call(a.rpc, "pop_blocks", {"nblocks": height - first}, path="pop_blocks")
         print("pop_blocks: %s, height now %s" % (r.get("status"), r.get("height")))
+    elif height < first:
+        # the node wound back below the split (a checkpoint rolls back 2 blocks below it):
+        # first give it the shared blocks it is missing
+        for b in d.get("shared", []):
+            if b["height"] >= call(a.rpc, "get_info")["height"]:
+                submit(a, b)
+        if call(a.rpc, "get_info")["height"] != first:
+            sys.exit("The node is at height %d, below the saved blocks (from %d). Let it sync to the split "
+                     "first, or save again from a node that has the shared blocks." % (
+                         call(a.rpc, "get_info")["height"], first))
     ok = 0
     for b in blocks:
-        r = call(a.rpc, "submit_block", [b["blob"]])
-        status = r.get("status")
-        if status != "OK":
-            sys.exit("Block %d not accepted (%s). If BUSY: restart the node with --offline, run this again, "
-                     "then restart it normally." % (b["height"], status))
+        submit(a, b)
         ok += 1
     info = call(a.rpc, "get_info")
     print("Resubmitted %d honest blocks; node height %d, top %s" % (ok, info["height"], info["top_block_hash"]))
-    if info["top_block_hash"] != blocks[-1]["hash"]:
-        print("The node did not move to the saved blocks: it probably still holds them as side blocks. "
-              "Restart it with --offline (that drops them) and run restore again.")
 
 
 def main():

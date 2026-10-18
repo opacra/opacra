@@ -102,7 +102,8 @@ enforcing nodes would stall on a block that never comes.
      and drop those when they restart unless they run with `--keep-alt-blocks`. Before
      restarting anything, on the seed: `contrib/launch/save-side-chain save` (in the
      package: `launch-kit/save-side-chain`). It saves them and prints the checkpoint to publish
-     (`H:hash`, the first block after the split). A node left stalled on the attacker's blocks
+     (`H:hash`, the first block after the split). It also saves the 10 blocks both chains share
+     below the split, which a node needs after the checkpoint rolls it back. A node left stalled on the attacker's blocks
      recovers with: restart it with `--offline`, `save-side-chain restore honest-blocks.json`,
      then restart it normally.
 3. **Read its hash from two separate nodes, and the explorer.** All three must match
