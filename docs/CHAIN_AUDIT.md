@@ -52,4 +52,5 @@ blocks a second on a seed. Exit status: 0 all passed, 1 a check failed, 2 could 
 
 | Date | Network | Blocks | Result |
 |---|---|---|---|
+| 18 Oct 2026 | Testnet 2 | 0 to 21,043 | All checks passed (296 s, node v0.2.4.0). Covers the end of the slow start at block 20,160: rewards stepped to the full curve (next reward 2.377961 OPCA) with the fund at exactly 5% throughout. 26,107.268363 OPCA created (genesis included), fund 1,305.244209 OPCA, fees 0.1239017 OPCA in 8 transactions (the 12 Oct payment tests and fund spend), all matching the node's own totals. Average block time 32.0 s; longest gap 355 min before block 8,889 (the PC was off after a power trip, 12-13 Oct). Report: /root/audit-2026-10-18.txt on the seed. |
 | 11 Oct 2026 | Testnet 2 | 0 to 3,981 | All checks passed. 939.714265 OPCA created (genesis included), fund 46.866504 OPCA (5.0% of the 937.33 OPCA mined since genesis), average block time 30.0 s, longest gap 5 min 30 s (before block 3,769, while the PC switched to the Windows launcher). No transactions yet, so fees were not exercised. |
