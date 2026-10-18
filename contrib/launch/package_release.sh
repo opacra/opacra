@@ -41,6 +41,9 @@ Mining threads: start-testnet.sh uses a quarter of the CPU threads. To use N thr
   MINE_THREADS=N ./start-testnet.sh
 "No incoming connections" or "No other node has connected to this one yet" is normal on a
 home connection behind a router: mining and syncing work as usual.
+start-testnet.sh follows the project's emergency checkpoints (DNSSEC-signed records under
+opacra.org and opacra.com, which must agree), used only to stop an attack and all listed on
+opacra.org. To run without them, remove --enforce-dns-checkpointing from start-testnet.sh.
 When the wallet says new coins have arrived, type  refresh  and enter your password when the
 wallet asks for it (never after the [wallet ...]: prompt).
 

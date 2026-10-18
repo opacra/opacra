@@ -722,6 +722,15 @@ namespace cryptonote
         LOG_PRINT_CCONTEXT_L1("Block " << new_block_hash << " not accepted for now (soft reject), keeping connection");
         return 1;
       }
+      else if (bvc.m_checkpoint_failed)
+      {
+        // Opacra: refused by a checkpoint: block the sender briefly, without scoring it
+        LOG_PRINT_CCONTEXT_L0("Block refused by a checkpoint, blocking the peer for "
+          << OPACRA_CHECKPOINT_MISMATCH_BLOCK_SECONDS / 60 << " minutes");
+        m_p2p->block_host(context.m_remote_address, OPACRA_CHECKPOINT_MISMATCH_BLOCK_SECONDS);
+        drop_connection(context, false, false);
+        return 1;
+      }
       else // failure for some other reason besides missing txs...
       {
         // drop connection and punish peer
@@ -1556,6 +1565,21 @@ namespace cryptonote
               // block the host).
               if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
                 LOG_PRINT_CCONTEXT_L1("Block not accepted for now (soft reject), disconnecting without penalty");
+                drop_connection(context, false, true);
+                return 1;
+              }))
+                LOG_ERROR_CCONTEXT("span connection id not found");
+
+              return 1;
+            }
+            if(bvc.m_verifivation_failed && bvc.m_checkpoint_failed)
+            {
+              // Opacra: refused by a checkpoint. Block the sender briefly (not the usual day)
+              // and drop it without scoring: it may be an honest node on an attacker's chain.
+              MWARNING("Block refused by a checkpoint: blocking " << span_origin.str() << " for "
+                << OPACRA_CHECKPOINT_MISMATCH_BLOCK_SECONDS / 60 << " minutes");
+              m_p2p->block_host(span_origin, OPACRA_CHECKPOINT_MISMATCH_BLOCK_SECONDS);
+              if (!m_p2p->for_connection(span_connection_id, [&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t f)->bool{
                 drop_connection(context, false, true);
                 return 1;
               }))

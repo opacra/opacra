@@ -82,7 +82,7 @@ echo  node has caught up, usually within a few minutes. Type  status  and press 
 echo  to check. To see your coins, double-click "Open testnet wallet".
 echo  To mine with more or fewer threads, see README.txt.
 echo.
-opacrad.exe --testnet --start-mining %ADDR% --mining-threads %THREADS%
+opacrad.exe --testnet --enforce-dns-checkpointing --start-mining %ADDR% --mining-threads %THREADS%
 pause
 exit /b
 :failed
@@ -132,6 +132,11 @@ than about 85 C, use fewer threads.
 
 "No incoming connections" or "No other node has connected to this one yet": normal
 on a home connection behind a router. Mining and syncing work as usual; nothing to do.
+
+Emergency checkpoints: the miner follows the project's emergency checkpoints (published in
+DNSSEC-signed records under opacra.org and opacra.com, which must agree). They are used only
+to stop an attack, and every one is listed on opacra.org. To run without them, remove
+--enforce-dns-checkpointing from "Start Opacra testnet".
 
 Upgrading from an earlier version: unzip the new version into its own folder, then
 copy these three files from your old folder into the new one before starting it:

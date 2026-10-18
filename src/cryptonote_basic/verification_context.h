@@ -72,5 +72,6 @@ namespace cryptonote
     bool m_bad_pow; // if bad pow, ban peer outright for DoS protection
     bool m_missing_txs; // set if, during verif, we don't have all the necessary txs available
     bool m_soft_reject; // Opacra: valid proof of work but ahead of our clock: not proof the sender is dishonest, don't punish the peer
+    bool m_checkpoint_failed; // Opacra: refused by a checkpoint: the peer may be an honest node that followed an attacker's chain, so block it briefly, not for a day
   };
 }

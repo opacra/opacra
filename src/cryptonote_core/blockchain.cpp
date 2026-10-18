@@ -1979,6 +1979,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
   {
     MERROR_VER("Block with id: " << id << std::endl << " can't be accepted for alternative chain, block height: " << block_height << std::endl << " blockchain height: " << get_current_blockchain_height());
     bvc.m_verifivation_failed = true;
+    bvc.m_checkpoint_failed = true;
     return false;
   }
 
@@ -2038,6 +2039,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     {
       LOG_ERROR("CHECKPOINT VALIDATION FAILED");
       bvc.m_verifivation_failed = true;
+      bvc.m_checkpoint_failed = true;
       return false;
     }
 
@@ -4326,6 +4328,7 @@ leave:
     {
       LOG_ERROR("CHECKPOINT VALIDATION FAILED");
       bvc.m_verifivation_failed = true;
+      bvc.m_checkpoint_failed = true;
       goto leave;
     }
   }

@@ -40,4 +40,6 @@ echo " node has caught up, usually within a few minutes. Type  status  to check.
 echo " your coins, open a second terminal in this folder and run  ./open-wallet.sh"
 echo " To mine with N threads instead:  MINE_THREADS=N ./start-testnet.sh"
 echo
-exec ./opacrad --testnet --start-mining "$ADDR" --mining-threads "$THREADS"
+# Enforce the project's emergency checkpoints (DNSSEC-signed, both domains must agree): in an
+# attack, a checkpoint only protects the honest chain if the miners follow it too.
+exec ./opacrad --testnet --enforce-dns-checkpointing --start-mining "$ADDR" --mining-threads "$THREADS"

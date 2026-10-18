@@ -243,6 +243,13 @@ Network and wallet:
     refresh. Testnet launchers mine with a quarter of the CPU threads by default
     (`MINE_THREADS` overrides it).
 
+25. After v0.2.4 (node policy and launchers, no consensus change): home nodes report "no incoming
+    connections" once, in plain words, instead of an hourly warning. A peer whose blocks a
+    checkpoint refuses is blocked for 10 minutes (`OPACRA_CHECKPOINT_MISMATCH_BLOCK_SECONDS`)
+    instead of 24 hours, and not scored, because after an emergency checkpoint honest nodes
+    that followed an attacker relay its chain too. The testnet launchers enforce DNS
+    checkpoints (`--enforce-dns-checkpointing`). Both from the attack rehearsal
+    (`docs/ATTACK_REHEARSAL.md`).
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,
 units opacra/milliop/microop/nanoop/picoop, `opacra:` payment URIs, file magic

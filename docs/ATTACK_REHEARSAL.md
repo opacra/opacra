@@ -31,12 +31,14 @@ gates, road-to-mainnet plan).
 3. **A checkpoint only wins if the miners enforce it.** Home nodes read DNS checkpoints but
    do not enforce them by default, so after an attack every home miner stays on the attacker's
    chain. The seeds then hold the honest chain alone and nothing mines it (a seed with no
-   honest peers refuses to mine: "BUSY"). Decision needed: home nodes and the launchers
-   enforce DNS checkpoints by default, at least for the launch period.
+   honest peers refuses to mine: "BUSY"). **Decided 18 Oct:** the launchers (`start-testnet.sh`, "Start Opacra testnet") now
+   enforce DNS checkpoints (`--enforce-dns-checkpointing`); the READMEs say how to opt out.
 4. **Seeds block every peer that relays the attacker's chain for 24 hours**, including honest
    home nodes that simply followed it. Even after such a node enforces the checkpoint, the
    seeds keep refusing it for a day (in the rehearsal it had to be unblocked by hand).
-   Candidate change for the next release: a short block (minutes) for a checkpoint mismatch.
+   **Changed 18 Oct:** a peer whose blocks a checkpoint refuses is now blocked for 10 minutes
+   (`OPACRA_CHECKPOINT_MISMATCH_BLOCK_SECONDS`) and not scored; tested against the rehearsal's
+   attacker node (block list showed 557 s left).
 5. The alert text and the side-chain floor behaved as designed; no code fault was found.
    The attacker node was eventually stopped by this workspace's 8 GB memory limit
    (`std::bad_alloc`, then the out-of-memory killer), with two full-memory miners running,

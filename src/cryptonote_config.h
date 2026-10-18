@@ -208,6 +208,11 @@
 #define P2P_FAILED_ADDR_FORGET_SECONDS                  (60*60)     //1 hour
 #define P2P_IP_BLOCKTIME                                (60*60*24)  //24 hour
 #define P2P_IP_FAILS_BEFORE_BLOCK                       10
+// Opacra: a peer whose blocks a checkpoint refuses is blocked for this long only. After an
+// emergency checkpoint, honest home nodes that followed the attacker's chain relay it too;
+// a 24-hour block would cut them off from the seeds long after they have enforced the
+// checkpoint (attack rehearsal, 18 Oct 2026). Long enough to stop an attacker resending.
+#define OPACRA_CHECKPOINT_MISMATCH_BLOCK_SECONDS        (10*60)
 #define P2P_IDLE_CONNECTION_KILL_INTERVAL               (5*60) //5 minutes
 
 #define P2P_SUPPORT_FLAG_FLUFFY_BLOCKS                  0x01
