@@ -21,7 +21,6 @@ Tor/I2P support, LMDB storage, pruning, RPC APIs (method names unchanged).
 | Spendable age | 10 blocks (~5 min) | `CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE` |
 | Ring size | 16 (enforced exactly) | v16 rules |
 | Consensus version | v1 at genesis only, v16 from block 1 | `src/hardforks/hardforks.cpp` |
-| Block weight during slow start | At most the effective median (≥ 75 kB): no block may enter the size-penalty zone before height 20,160 | `get_block_reward_at_height()` |
 | Block weight / fees | Monero's dynamic block weight and 2021 fee scaling, scaled to 30 s blocks so they match Monero per unit of time: 75 kB penalty-free zone (Monero 300 kB per 2 min), 400-block short-term and 400,000-block long-term medians (3.3 h and 139 days, as Monero). Max transaction weight 36.9 kB (half the zone). Default wallet fee: 1,300,000 atomic units per byte while blocks are not full (the daemon's lowest level, base reward × 3000 / 75,000²), about 0.0028 OPCA for a typical 2-input transaction (~2.2 kB), measured over 470 testnet payments on 4 Oct 2026. It falls as the block reward decays and as the long-term median block size grows | `CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V5`, `CRYPTONOTE_REWARD_BLOCKS_WINDOW`, `CRYPTONOTE_LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE` |
 | Decimals | 12 | unchanged |
 
@@ -29,34 +28,33 @@ Tor/I2P support, LMDB storage, pruning, RPC APIs (method names unchanged).
 
 ```
 base_reward(generated) = max( (MONEY_SUPPLY - generated) >> 22 , TAIL_EMISSION_REWARD )
-reward(height)         = base_reward * height / 20160      for 1 <= height < 20160   (slow start)
-                       = base_reward                        otherwise
+reward(height)         = base_reward                        from block 1 (no slow start)
 MONEY_SUPPLY           = 10,000,000 OPCA  (10^19 atomic units)
 TAIL_EMISSION_REWARD   = 0.05 OPCA
 ```
 
 The Monero block-size penalty is then applied as usual, and fees are added.
-`generated` counts the coins actually created (slow start included) and is capped at
+`generated` counts the coins actually created and is capped at
 `MONEY_SUPPLY`; after the cap is reached the tail reward continues unchanged.
 
 | After | Emitted (main curve) | Share of 10M |
 |---|---|---|
-| 1 year | 2,199,478 OPCA | 22.0% |
-| 2 years | 3,929,789 OPCA | 39.3% |
-| 3 years | 5,276,283 OPCA | 52.8% |
-| 4 years | 6,324,097 OPCA | 63.2% |
-| 5 years | 7,139,486 OPCA | 71.4% |
-| 10 years | 9,183,710 OPCA | 91.8% |
-| 15 years | 9,767,059 OPCA | 97.7% |
+| 1 year | 2,218,201 OPCA | 22.2% |
+| 2 years | 3,944,359 OPCA | 39.4% |
+| 3 years | 5,287,621 OPCA | 52.9% |
+| 4 years | 6,332,920 OPCA | 63.3% |
+| 5 years | 7,146,352 OPCA | 71.5% |
+| 10 years | 9,185,669 OPCA | 91.9% |
+| 15 years | 9,767,618 OPCA | 97.7% |
 
-- Genesis reward: 2.384185791015 OPCA (`MONEY_SUPPLY >> 22`). Because of the slow start,
-  the first full-reward block is 20,160, which pays 2.378462570010 OPCA (~6,850 OPCA per day).
+- Genesis reward: 2.384185791015 OPCA (`MONEY_SUPPLY >> 22`). Block 1 pays the full curve,
+  2.384185222581 OPCA (~6,870 OPCA per day at first; about 48,000 OPCA in the first week).
 - Half-life of the remaining main supply: 2.76 years.
 - Tail emission starts at height ≈16,219,000 (~15.4 years): 0.05 OPCA per block,
   ~52,596 OPCA a year, which is ~0.5% a year at that point and falling.
-- Slow start: during the first 20,160 blocks (7 days) rewards rise linearly from 0,
-  so launch-day miners cannot capture a large share before others join. About 24,000
-  OPCA is emitted in that week instead of ~48,000 (the rest stays in the curve).
+- No launch slow start (removed 18 Oct 2026 on outside advice): full rewards from block 1
+  draw more hash power in the first week, when the chain is weakest. Testnet 2 (10-18 Oct 2026)
+  ran a 20,160-block linear slow start; its history is valid only under the v0.2.4 code.
 - Genesis output: 2.384185791015 OPCA. It is a pre-RingCT output with a unique amount, so
   no valid 16-member ring can reference it. From the mainnet genesis on, its key is a
   "nothing up my sleeve" point derived from the genesis message (`coinid.py`), so no one
@@ -119,14 +117,17 @@ on a small chain. LWMA is the most widely deployed replacement in CryptoNote cha
 | Address prefix (standard / integrated / subaddress) | 30598 `Pa` / 24839 `Pi` / 22408 `Ps` | 8479 `Te` / 11935 `Tf` / 15263 `Tg` | 28440 `Sa` / 22809 `Si` / 20378 `Ss` |
 | Address length | 98 / 109 / 98 characters | 97 / 108 / 97 | 98 / 109 / 98 |
 | P2P / RPC / ZMQ ports | 29960 / 29961 / 29962 | 29970 / 29971 / 29972 | 29980 / 29981 / 29982 |
-| Network ID | `BC2D893E-96B8-F691-199F-373CE5BC4718` | testnet 2: `DBE382C4-DBE4-46C2-C15E-532882BEFE7E` | `0F57C4D1-D344-63D1-3D6F-FD9DD5F24042` |
-| Genesis message | "Opacra mainnet genesis \| 2026-10-02 \| Private by default, auditable by choice." | "Opacra testnet 2 genesis \| 2026-10-10 \| RandomOPCA" | "Opacra stagenet genesis \| 2026-10-02" |
+| Network ID | `BC2D893E-96B8-F691-199F-373CE5BC4718` | testnet 3: set on its launch day by `make_genesis.py` | `0F57C4D1-D344-63D1-3D6F-FD9DD5F24042` |
+| Genesis message | "Opacra mainnet genesis \| 2026-10-02 \| Private by default, auditable by choice." | "Opacra testnet 3 genesis \| <launch date> \| <headline>" (from `make_genesis.py`) | "Opacra stagenet genesis \| 2026-10-02" |
 
 Message-signing domain: `OpacraMessageSignature` (signatures cannot be replayed on Monero).
-Data directory `~/.opacra` (testnet: `~/.opacra/testnet2`), config file `opacra.conf`, log `opacra.log`.
+Data directory `~/.opacra` (testnet: `~/.opacra/testnet3`), config file `opacra.conf`, log `opacra.log`.
 
-Testnet 2 (from 10 Oct 2026, v0.2.0) replaced the first public testnet (4–10 Oct 2026,
-v0.1.x), which used Monero's `rx/0`; the new network ID and data folder keep the two apart.
+Testnet 3 runs mainnet's exact rules: no slow start and no testnet exemptions; only its name,
+network ID, ports, prefixes, genesis, fund address and checkpoint domain differ. Its genesis is
+made with the launch-day procedure (`contrib/coin-identity/make_genesis.py apply` then
+`verify`), which also rehearses mainnet's. It replaced testnet 2 (10-18 Oct 2026, RandomOPCA,
+with a slow start), which replaced the first public testnet (4-10 Oct 2026, Monero's `rx/0`).
 
 These values are the **development identity**. Generate fresh network IDs and genesis
 transactions on launch day (`contrib/coin-identity/coinid.py`).
@@ -135,21 +136,22 @@ transactions on launch day (`contrib/coin-identity/coinid.py`).
 
 Consensus:
 
-1. `src/cryptonote_config.h`: block time, emission constants, slow start, LWMA window
+1. `src/cryptonote_config.h`: block time, emission constants, LWMA window
    and startup constants, future time limit, median window, identity (prefixes,
    ports, network IDs, genesis transactions), data directory name, signing domain.
 2. `src/cryptonote_basic/difficulty.cpp`: `next_difficulty()` replaced by LWMA-1;
    `next_difficulty_64()` kept as a wrapper for API compatibility.
 3. `src/cryptonote_basic/cryptonote_basic_impl.cpp/.h`: `get_block_reward()` uses a
    per-block emission factor and fixed tail (Monero's per-minute scaling truncates to
-   zero below 60 s blocks); new `apply_slow_start()` and `get_block_reward_at_height()`.
+   zero below 60 s blocks); new `get_block_reward_at_height()` (one place for any height rule;
+   today the reward does not depend on height).
 4. `src/cryptonote_core/cryptonote_tx_utils.cpp`: coinbase construction uses
    `get_block_reward_at_height()`.
 5. `src/cryptonote_core/blockchain.cpp/.h`: coinbase validation uses
    `get_block_reward_at_height()` (height passed in); block templates pass the height to
    the transaction pool.
 6. `src/cryptonote_core/tx_pool.cpp/.h`: template filling uses the height-aware reward, so
-   the expected reward reported to miners and pools is exact during slow start.
+   the expected reward reported to miners and pools is exact.
 7. `src/hardforks/hardforks.cpp`: compact fork tables `{1 @ 0, 16 @ 1}` for all networks.
 8. `src/blocks/checkpoints.dat`: emptied (Monero fast-sync hashes removed);
    `src/checkpoints/checkpoints.cpp`: Monero checkpoints removed.
@@ -159,8 +161,8 @@ Consensus:
 10. `src/cryptonote_core/blockchain.cpp` (`build_alt_chain`, `complete_timestamps_vector`,
     `handle_alternative_block`): side chains use exactly the main chain's median-time-past
     rule: the 11 previous blocks including genesis, and no check below height 11.
-11. Slow start also forbids blocks above the effective median (the reward is too small for
-    Monero's size penalty to deter chain bloat); `tx_pool.cpp` leaves room for the coinbase.
+11. (Removed 18 Oct 2026: the slow start's block-size cap. Monero's size penalty applies from
+    block 1.)
 12. Side-chain difficulty floor (`difficulty.cpp` `alt_difficulty_acceptable`, used in
     `blockchain.cpp`): once the main chain is past 122 blocks (two LWMA windows, ~1 hour),
     a side-chain block at any height whose required difficulty is below 1/4 of the main
@@ -222,8 +224,8 @@ Network and wallet:
     mainnet only) every 5 minutes (Monero: hourly), passing the network type through
     `Blockchain::update_checkpoints`. The log says once when a new DNS checkpoint is read or
     enforced; "no two valid TXT records" is logged at level 1 instead of 0. Seeds enforce
-    them (`enforce-dns-checkpointing=1`). Testnet 2 has hard-coded checkpoints at blocks 0
-    and 2000. Procedure: `docs/EMERGENCY_CHECKPOINTS.md`.
+    them (`enforce-dns-checkpointing=1`). Testnet 3's genesis checkpoint is written by
+    `make_genesis.py verify --checkpoint`. Procedure: `docs/EMERGENCY_CHECKPOINTS.md`.
     v0.2.2: `core::on_idle` refreshes checkpoints on a timer (DNS reads on their own thread
     after start-up) and the call in the block-relay
     path (`handle_notify_new_fluffy_block`) is removed; `Blockchain::update_checkpoints` reads
@@ -250,6 +252,9 @@ Network and wallet:
     that followed an attacker relay its chain too. The testnet launchers enforce DNS
     checkpoints (`--enforce-dns-checkpointing`). Both from the attack rehearsal
     (`docs/ATTACK_REHEARSAL.md`).
+26. 18 Oct 2026 (consensus): no launch slow start on any network; block 1 costs the startup
+    difficulty on every network (testnet 2's exemption removed); testnet data folder
+    `testnet3`; launch-day genesis procedure `contrib/coin-identity/make_genesis.py`.
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,
 units opacra/milliop/microop/nanoop/picoop, `opacra:` payment URIs, file magic

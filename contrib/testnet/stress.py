@@ -63,7 +63,6 @@ SEED_RPC = os.environ.get("SEED_RPC")
 NETFLAG = ["--testnet"] if NET == "testnet" else []
 SEED_P2P = 29970 if NET == "testnet" else int(os.environ.get("SEED_P2P", "0"))
 TARGET = 30
-SLOW_START_END = 20160
 ZONE = 75000
 
 DATA.mkdir(parents=True, exist_ok=True)
@@ -476,9 +475,6 @@ def main():
         bad = [b["h"] for b in blocks if not b["fund_ok"]]
         check("fund: every block paid the development fund exactly 5% of its subsidy", not bad and blocks,
               f"{len(blocks)} blocks checked, mismatches at {bad[:10]}")
-        if blocks and blocks[-1]["h"] < SLOW_START_END:
-            check("size: no block above 75 kB during the launch slow start", max(b["w"] for b in blocks) <= ZONE,
-                  f"largest {max(b['w'] for b in blocks):,} bytes")
         check("tips: local node and seed never disagreed for long outside the restart/outage tests", mism <= 3,
               f"{mism} one-minute polls with different tips")
         mem = [m for m in state["memory"] if m["local_kb"]]

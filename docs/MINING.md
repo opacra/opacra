@@ -8,8 +8,8 @@ desktop or laptop CPU can mine, and GPUs are inefficient. The miner built into `
 (and started from the wallet with `start_mining`) uses RandomOPCA automatically; XMRig needs
 the Opacra build (`rx/opca`, section 2).
 
-- Block time: 30 seconds. Block reward: 2.384186 OPCA at launch, ramping up linearly
-  from zero over the first 7 days (20,160 blocks).
+- Block time: 30 seconds. Block reward: 2.384186 OPCA from block 1, falling slowly along
+  the emission curve.
 - Miners receive 95% of each block's newly created coins plus all transaction fees; 5% goes
   to the development fund as the last coinbase output. The node builds this into every
   block template, and a block without the fund payment is rejected.
@@ -81,10 +81,9 @@ Pool requirements: `opacrad` with `--rpc-bind-ip 127.0.0.1`, an `opacra-wallet-r
 payouts, Redis or LMDB depending on the pool, and a payment threshold that respects
 the 60-block unlock.
 
-## 4. Why a 7-day slow start
+## 4. Full rewards from block 1
 
-Most new coins are mined out by a few insiders in the first hours, before anyone else
-knows the chain exists. Opacra's block reward starts near zero and rises linearly for
-20,160 blocks: the first day pays about 7% of a normal day, and the whole first week
-pays half of a normal week. Mining early buys no advantage, and there is no reason to
-rush on launch day.
+There is no reduced-reward "slow start" (dropped on 18 Oct 2026, on outside advice): full
+rewards from block 1 draw the most hash power in the first week, when a new chain is easiest
+to attack. Fairness comes from announcing the launch time a week ahead, in UTC, so anyone can
+be ready for the first block, and from mining on ordinary CPUs.

@@ -28,9 +28,9 @@ and (c) 2012-2013 The Cryptonote developers. BSD-3-Clause, see [LICENSE](LICENSE
 | Difficulty algorithm | LWMA-1 (N = 60, reacts within ~60 blocks) | 720-block sorted window |
 | Main emission | **10,000,000 OPCA**, smooth curve (half emitted in ~2.8 years) | ~18.1M XMR |
 | Tail emission | 0.05 OPCA per block forever (~52,600 OPCA a year, ~0.5% and falling) | 0.6 XMR per block |
-| Launch | No premine, no ICO, 7-day reward ramp ("slow start") | fair launch |
+| Launch | No premine, no ICO, full reward from block 1, launch time announced a week ahead | fair launch |
 | Development fund | **5% of every block's subsidy**, forever, to a published address with a public view key (fees go to miners) | none |
-| Initial block reward | 2.384186 OPCA (full reward from block 20,160) | – |
+| Initial block reward | 2.384186 OPCA (from block 1) | – |
 | Decimals | 12 (1 OPCA = 10¹² picoop) | 12 |
 | Addresses | `Pa…` standard, `Ps…` subaddress, `Pi…` integrated | `4…`, `8…`, `4…` |
 | Ports (mainnet) | P2P 29960, RPC 29961, ZMQ 29962 | 18080, 18081, 18082 |
@@ -46,8 +46,8 @@ Full parameter list and every change from Monero: [docs/OPACRA_SPEC.md](docs/OPA
 
 ## Status
 
-- **Consensus changes are new code.** The LWMA difficulty, the per-block emission,
-  the slow start and the version-16-from-block-1 start have been exercised on a
+- **Consensus changes are new code.** The LWMA difficulty, the per-block emission
+  and the version-16-from-block-1 start have been exercised on a
   private multi-node network ([test report](docs/TEST_REPORT.md)), but they have **not
   been independently audited**. Run a public testnet for several weeks and get a
   review before mainnet.
@@ -75,7 +75,7 @@ ls bin/   # opacrad  opacra-wallet-cli  opacra-wallet-rpc
 # "Illegal instruction" on other machines. For binaries you will copy elsewhere
 # (servers, releases), add -DARCH=x86-64 to the cmake line.
 
-# consensus regression tests for the rules Opacra changed (emission, slow start, LWMA, forks)
+# consensus regression tests for the rules Opacra changed (emission, LWMA, forks, fund)
 make opacra_consensus_tests && ./bin/opacra_consensus_tests
 ```
 
