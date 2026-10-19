@@ -1565,7 +1565,7 @@ namespace cryptonote
     fee = 0;
     
     //baseline empty block
-    // Opacra: reward at this height, including the launch slow-start ramp
+    // Opacra: the reward at this height (one place for any height rule)
     if (!get_block_reward_at_height(median_weight, total_weight, already_generated_coins, best_coinbase, version, height))
     {
       MERROR("Failed to get block reward for empty block");

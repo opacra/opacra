@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Package a built tree: Linux binaries + launch kit, full source (with submodules and git
-# history, ready to push to your own GitHub), and the Opacra patch series against Monero.
+# Package a built tree: Linux binaries + launch kit, full source of the committed HEAD (with
+# submodules and git history, ready to push to your own GitHub), and the Opacra patch series against Monero.
 #   contrib/launch/package_release.sh [output-dir]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -62,32 +62,42 @@ This is a development build with the development chain identity. Do not use it f
 public launch; follow docs/LAUNCH_CHECKLIST.md.
 EOF
 (cd "$STAGE/$BIN_DIR" && sha256sum opacrad opacra-wallet-cli opacra-wallet-rpc > SHA256SUMS)
-tar -C "$STAGE" -czf "$OUT/$BIN_DIR.tar.gz" "$BIN_DIR"
+# owned by root in the archive, whoever built it
+TAR_OWNER=(--owner=0 --group=0 --numeric-owner)
+tar -C "$STAGE" "${TAR_OWNER[@]}" -czf "$OUT/$BIN_DIR.tar.gz" "$BIN_DIR"
 rm -rf "$STAGE"
 
-# 2. source with submodules and git history (no build output). The Windows build leaves
-#    gigabytes of downloaded and built libraries in contrib/depends; leave those out too.
+# 2. source: a clean clone of the committed tree (HEAD) with its history and submodules, so
+#    nothing untracked, ignored or local can slip in. Commit before packaging.
 SRC_DIR="opacra-v$VERSION-source"
-R="$(basename "$ROOT")"
-DEPENDS_EXCLUDES=()
-for d in SDKs work built sources config.site 'x86_64*' 'i686*' 'mips*' 'arm*' 'aarch64*'; do
-  DEPENDS_EXCLUDES+=(--exclude="$R/contrib/depends/$d")
-done
-tar -C "$(dirname "$ROOT")" --exclude="$(basename "$ROOT")/build" --exclude="$(basename "$ROOT")/dist" \
-    --exclude='__pycache__' "${DEPENDS_EXCLUDES[@]}" --transform "s,^$(basename "$ROOT"),$SRC_DIR," \
-    -czf "$OUT/$SRC_DIR.tar.gz" "$(basename "$ROOT")"
+SRC_STAGE="$(mktemp -d)"
+git -C "$ROOT" diff --quiet HEAD -- || echo "Note: uncommitted changes are not in the source archives (HEAD only)" >&2
+git clone -q --no-local "$ROOT" "$SRC_STAGE/$SRC_DIR"
+(
+  cd "$SRC_STAGE/$SRC_DIR"
+  git checkout -q --detach "$(git -C "$ROOT" rev-parse HEAD)"
+  # submodules from this checkout's own copies (no download), then back to their public URLs
+  git submodule init -q
+  git config -f .gitmodules --get-regexp '^submodule\..*\.path$' | while read -r key path; do
+    name="${key#submodule.}"; name="${name%.path}"
+    git config "submodule.$name.url" "$ROOT/$path"
+  done
+  git -c protocol.file.allow=always submodule update -q
+  git submodule sync -q
+  git remote set-url origin https://github.com/opacra/opacra.git
+)
+tar -C "$SRC_STAGE" "${TAR_OWNER[@]}" -czf "$OUT/$SRC_DIR.tar.gz" "$SRC_DIR"
 
 # 2b. the same source without git metadata, xz-compressed (smaller; builds the same)
-tar -C "$(dirname "$ROOT")" --exclude="$(basename "$ROOT")/build" --exclude="$(basename "$ROOT")/dist" \
-    --exclude='__pycache__' --exclude='.git' "${DEPENDS_EXCLUDES[@]}" --transform "s,^$(basename "$ROOT"),$SRC_DIR," \
-    -cJf "$OUT/$SRC_DIR-nogit.tar.xz" "$(basename "$ROOT")"
+tar -C "$SRC_STAGE" "${TAR_OWNER[@]}" --exclude='.git' -cJf "$OUT/$SRC_DIR-nogit.tar.xz" "$SRC_DIR"
+rm -rf "$SRC_STAGE"
 
 # 3. patch series against upstream Monero
 PATCH_DIR="$(mktemp -d)/opacra-patches-vs-monero-v0.18.5.1"
 mkdir -p "$PATCH_DIR"
 git format-patch -q "$BASE_COMMIT"..HEAD -o "$PATCH_DIR"
 git diff --stat "$BASE_COMMIT"..HEAD -- src > "$PATCH_DIR/DIFFSTAT-src.txt"
-(cd "$(dirname "$PATCH_DIR")" && tar -czf "$OUT/opacra-patches-vs-monero-v0.18.5.1.tar.gz" "$(basename "$PATCH_DIR")")
+(cd "$(dirname "$PATCH_DIR")" && tar "${TAR_OWNER[@]}" -czf "$OUT/opacra-patches-vs-monero-v0.18.5.1.tar.gz" "$(basename "$PATCH_DIR")")
 
 (cd "$OUT" && sha256sum ./*.tar.gz ./*.tar.xz > SHA256SUMS.txt)
 ls -la "$OUT"

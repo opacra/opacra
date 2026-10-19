@@ -1,5 +1,11 @@
 # Mining security audit, October 2026
 
+> **Later changes (record kept as audited).** The launch slow start was removed on 18 Oct
+> 2026 (full reward and Monero's size penalty from block 1; `docs/OPACRA_SPEC.md` item 26),
+> so the slow-start entries below describe the code as it was then. An independent review of
+> 19 Oct 2026 added the launch-time rule and fixed checkpoint rollbacks at heights 1-2
+> (spec item 27).
+
 Scope: everything Opacra changed from Monero v0.18.5.1 that affects mining and block
 acceptance. That covers block rewards, the slow start, the development fund, LWMA
 difficulty, timestamps, side chains and reorganisations, block relay, and the release

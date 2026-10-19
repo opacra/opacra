@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Provision an Ubuntu 24.04 server as an Opacra seed node.
 #   scp opacra-v<version>-linux-x64.tar.gz seed-node-setup.sh instance-names.sh opacrad.service opacra.conf root@VPS:
-#   ssh root@VPS 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz [mainnet|testnet|stagenet] [alert topic]'
+#   ssh -t root@VPS 'bash seed-node-setup.sh opacra-v<version>-linux-x64.tar.gz [mainnet|testnet|stagenet] [-]'
 # If install-alerts.sh and its files (opacra-alert, opacra-alert.service, opacra-alert.timer)
-# are copied too, phone alerts are set up as well; pass the topic of your other seeds to
-# share one alert feed.
+# are copied too, phone alerts are set up as well. To share one alert feed with your other
+# seeds, give "-" as the third argument and paste their topic when asked (a server that
+# already has alerts for another network reuses its topic by itself).
 # Needs: 2+ vCPU, 4 GB RAM, 50+ GB SSD.
 # Opens the network's P2P port (mainnet 29960, testnet 29970, stagenet 29980) if ufw is active.
 # One server can run several networks: run this once per network. Testnet is the service
@@ -38,8 +39,32 @@ systemctl enable --now chrony
 id opacra >/dev/null 2>&1 || useradd --system --home /var/lib/opacra --shell /usr/sbin/nologin opacra
 mkdir -p /opt/opacra /etc/opacra /var/lib/opacra "$DATADIR"
 case "$TARBALL" in /*) ;; *) TARBALL="$OLDPWD/$TARBALL" ;; esac
-# all networks share one copy of the programs; a running node keeps its old copy until restarted
-tar -xzf "$TARBALL" -C /opt/opacra --strip-components=1
+# check the package against the release checksums when a checksum file is next to it
+# (SHA256SUMS.txt from the package step, or the signed SHA256SUMS-v<version>.asc from the
+# site; verify the signature on your PC first: docs/VERIFYING.md)
+PKG="$(basename "$TARBALL")"
+have=$(sha256sum "$TARBALL" | awk '{print $1}')
+want=""
+for f in "$(dirname "$TARBALL")"/SHA256SUMS*; do
+  [ -f "$f" ] || continue
+  want=$(awk -v f="$PKG" '{n=$2; sub(/^\*/, "", n); sub(/^\.\//, "", n)} n == f {print $1; exit}' "$f")
+  [ -n "$want" ] && { SUMS="$f"; break; }
+done
+if [ -n "$want" ]; then
+  if [ "$want" != "$have" ]; then
+    echo "$PKG does not match $SUMS: not installing." >&2
+    exit 1
+  fi
+  echo "Package checksum matches $SUMS"
+else
+  echo "Package SHA256: $have  (no checksum file for it next to it: compare by hand)"
+fi
+# all networks share one copy of the programs; a running node keeps its old copy until restarted.
+# The programs belong to root whatever the archive says, so the node's account can't change
+# them.
+tar --no-same-owner -xzf "$TARBALL" -C /opt/opacra --strip-components=1
+chown -R root:root /opt/opacra
+chmod -R go-w /opt/opacra
 
 if [ ! -e "$NODECONF" ]; then
   # the example config is for mainnet; switch ports, folders and network
@@ -84,7 +109,7 @@ for other in $(systemctl list-units --type=service --all --no-legend 'opacrad*' 
   [ "$other" = "$SERVICE" ] || echo "Also on this server: $other. It runs the previous programs until: systemctl restart $other" >&2
 done
 if [ -f install-alerts.sh ]; then
-  bash install-alerts.sh "$NETWORK" $ALERT_TOPIC
+  OPACRA_ALERT_TOPIC="${OPACRA_ALERT_TOPIC:-}" bash install-alerts.sh "$NETWORK" ${ALERT_TOPIC:+"$ALERT_TOPIC"}
 else
   echo "Phone alerts are not set up: copy install-alerts.sh and its files here and run it (docs/ALERTS.md)." >&2
 fi

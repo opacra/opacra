@@ -127,7 +127,7 @@ namespace cryptonote
     in.height = height;
 
     uint64_t block_reward;
-    // Opacra: includes the launch slow-start ramp (must match Blockchain::validate_miner_transaction)
+    // Opacra: the reward at this height (must match Blockchain::validate_miner_transaction)
     if(!get_block_reward_at_height(median_weight, current_block_weight, already_generated_coins, block_reward, hard_fork_version, height))
     {
       LOG_PRINT_L0("Block is too big");

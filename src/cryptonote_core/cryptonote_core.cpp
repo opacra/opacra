@@ -291,7 +291,20 @@ namespace cryptonote
         if (m_checkpoints_thread.joinable())
           m_checkpoints_thread.join();
         m_checkpoints_thread = boost::thread([this]() {
-          const bool r = m_blockchain_storage.update_checkpoints(m_checkpoints_path, true);
+          // Opacra (19 Oct 2026 review): an exception escaping this thread would abort the daemon
+          bool r = true;
+          try
+          {
+            r = m_blockchain_storage.update_checkpoints(m_checkpoints_path, true);
+          }
+          catch (const std::exception &e)
+          {
+            MERROR("Error while applying checkpoints: " << e.what());
+          }
+          catch (...)
+          {
+            MERROR("Unknown error while applying checkpoints");
+          }
           m_checkpoints_updating.clear();
           if (!r)
             graceful_exit();

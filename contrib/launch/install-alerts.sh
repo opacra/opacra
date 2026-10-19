@@ -2,7 +2,10 @@
 # Phone alerts for an Opacra seed node (push notifications through the free ntfy app).
 #   scp contrib/launch/{opacra-alert,install-alerts.sh,opacra-alert.service,opacra-alert.timer} root@SEED:
 #   ssh root@SEED 'bash install-alerts.sh testnet'            # first seed: makes a new alert topic
-#   ssh root@SEED 'bash install-alerts.sh testnet TOPIC'      # more seeds: same topic, one phone feed
+#   ssh -t root@SEED 'bash install-alerts.sh testnet -'       # more seeds: asks for the topic (same feed)
+# The topic is the alert feed's only secret, so it isn't typed on the command line (where `ps`
+# and shell history would keep it): "-" asks for it, or set OPACRA_ALERT_TOPIC. A server that
+# already has alerts for another network reuses that topic by itself.
 # Safe to run again (e.g. after editing /etc/opacra/alert.conf or to upgrade the script).
 # Restarts the node once, so that it starts calling the alert script. Each network on the
 # server has its own alert config and watchdog (instance-names.sh): testnet uses
@@ -10,7 +13,12 @@
 # watchdog opacra-alert-mainnet, and the command `opacra-alert-mainnet status`.
 set -euo pipefail
 NETWORK=${1:-mainnet}
-TOPIC=${2:-}
+TOPIC=${2:-${OPACRA_ALERT_TOPIC:-}}
+if [ "$TOPIC" = "-" ]; then
+  read -r -s -p "Alert topic (paste it, then Enter): " TOPIC; echo >&2
+elif [ -n "${2:-}" ]; then
+  echo "Note: a topic typed on the command line stays in shell history; next time use -" >&2
+fi
 case "$NETWORK" in
   mainnet)  RPC=29961; EXPLORER="" ;;
   testnet)  RPC=29971; EXPLORER="https://explorer.opacra.org" ;;

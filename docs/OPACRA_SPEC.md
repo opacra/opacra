@@ -17,6 +17,7 @@ Tor/I2P support, LMDB storage, pruning, RPC APIs (method names unchanged).
 | Startup difficulty | blocks 1–12: 10,000 (`DIFFICULTY_STARTUP_GUESS`; the first public testnet's block 1 had difficulty 1); LWMA from block 13 with the blocks available | |
 | Future time limit | 180 s (Monero: 7,200 s) | `CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT` |
 | Median-time-past window | 11 blocks (Monero: 60) | `BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW` |
+| Launch time | every block after genesis is dated at or after it, so block 1 is accepted from 3 minutes before it | the height-1 entry of each table in `src/hardforks/hardforks.cpp`; `Blockchain::check_launch_time` |
 | Coinbase maturity | 60 blocks (~30 min) | `CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW` |
 | Spendable age | 10 blocks (~5 min) | `CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE` |
 | Ring size | 16 (enforced exactly) | v16 rules |
@@ -34,8 +35,8 @@ TAIL_EMISSION_REWARD   = 0.05 OPCA
 ```
 
 The Monero block-size penalty is then applied as usual, and fees are added.
-`generated` counts the coins actually created and is capped at
-`MONEY_SUPPLY`; after the cap is reached the tail reward continues unchanged.
+`generated` counts the coins actually created. It is not capped (item 14): once it reaches
+`MONEY_SUPPLY` the formula gives only the tail reward, which continues unchanged.
 
 | After | Emitted (main curve) | Share of 10M |
 |---|---|---|
@@ -169,8 +170,8 @@ Consensus:
     chain's reference difficulty is refused. The reference is the lower of the next
     difficulty and the lowest main-chain difficulty of the last 720 blocks, so a node whose
     difficulty was inflated during an eclipse still accepts the honest chain. In the first
-    hour the reference is capped at the startup guess (10,000), and a side block 1
-    (difficulty 1) is only accepted while the main chain has at most 10 blocks. Without checkpoints, a side chain forked from far back could
+    hour the reference is capped at the startup guess (10,000). Block 1 costs the startup
+    guess on every network, so no side block is free. Without checkpoints, a side chain forked from far back could
     claim hours of slow blocks and walk its difficulty down to almost nothing, then flood
     nodes with free blocks. A competing chain that could actually win never needs a much
     lower difficulty than ours, so honest reorgs of any depth still work. Side-chain
@@ -218,6 +219,10 @@ Network and wallet:
     Opacra unchanged (security audit item 1). Reference vector: key "test key 000", input
     "This is a test" → `460b9dbac09aa34bd64b275599f95195d2cd2eaf3dd6eb0b1e2631d9d3e7cafc`
     (Monero: `639183aa…`). XMRig needs `contrib/xmrig/opacra-xmrig.patch` (`rx/opca`).
+    RandomX's own test program (`randomx-tests`) checks this vector (interpreter and JIT)
+    and skips the upstream vectors, which only hold with Monero's salt; the MSVC assembler
+    config (`src/asm/configuration.asm`) carries the same salt (19 Oct 2026).
+    The vendored RandomX doesn't update itself: upstream fixes must be merged by hand.
 23. DNS emergency checkpoints (v0.2.1, node policy, not consensus): `coin_network.h` lists
     `checkpoints.opacra.org`/`.com` (mainnet) and `testpoints.opacra.org`/`.com` (testnet);
     `core::update_checkpoints` reads them on every network that lists domains (Monero:
@@ -232,7 +237,7 @@ Network and wallet:
     DNS without a lock, then changes `m_checkpoints` under the tx-pool and blockchain locks
     (Monero changed it unlocked); a DNS set with two hashes for one height is ignored whole;
     an enforcing node warns once when no checkpoint can be read. The testnet config-file and
-    libwallet ringdb defaults also use `testnet2`.
+    libwallet ringdb defaults use the testnet data folder (`testnet3` since 18 Oct 2026, item 26).
 24. v0.2.4 (no consensus change): `src/common/dns_utils.cpp` trusts the root DNSSEC key
     KSK-2024 (`. IN DS 38696 8 2 683D…2B16`), which alone signs the root zone from 11 October
     2026; without it no DNSSEC record validated and DNS checkpoints could not be read (found
@@ -255,6 +260,25 @@ Network and wallet:
 26. 18 Oct 2026 (consensus): no launch slow start on any network; block 1 costs the startup
     difficulty on every network (testnet 2's exemption removed); testnet data folder
     `testnet3`; launch-day genesis procedure `contrib/coin-identity/make_genesis.py`.
+27. 19 Oct 2026, from an independent review:
+    - (consensus) launch-time rule: a block at height 1 or above whose timestamp is
+      before the network's launch time (the time of the height-1 entry in its fork table) is
+      invalid, on the main chain and on side chains (`Blockchain::check_launch_time`, called
+      from `check_block_timestamp` and `handle_alternative_block`). Block templates are dated at
+      or after it. With the 3-minute future time limit no node accepts block 1 earlier than
+      3 minutes before the launch, and a chain mined in secret before the launch can't carry
+      a week of earlier, honest-looking dates. It doesn't stop everything: someone holding the
+      genesis early could still mine blocks dated just after the launch and bunch them up (so
+      LWMA raises their difficulty), and release them once those dates are valid. So the main
+      defence stays procedural: the genesis is made on launch day and kept private until
+      mining opens, and the first checkpoint record follows within the hour. Regtest/fakechain
+      has no launch time.
+    - (node policy) a checkpoint rollback never goes below height 1, so genesis is
+      never popped (a checkpoint at height 1 or 2 used to wrap the rollback height or crash);
+      the checkpoint loop rereads the chain height after each rollback.
+    - (node policy) the background checkpoint thread catches exceptions and logs
+      them instead of aborting the daemon.
+    Tests: `contrib/testnet/checkpoint_rollback_test.py`, `contrib/testnet/launch_time_test.py`.
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,
 units opacra/milliop/microop/nanoop/picoop, `opacra:` payment URIs, file magic

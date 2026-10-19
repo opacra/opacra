@@ -1239,6 +1239,9 @@ namespace cryptonote
     network_type m_nettype;
     bool m_offline;
     difficulty_type m_fixed_difficulty;
+    // Opacra (19 Oct 2026 review): no block after genesis may be dated before the network's launch
+    // time (the fork table's height-1 entry, written by make_genesis.py on launch day)
+    uint64_t m_launch_time = 0;
 
     std::atomic<bool> m_cancel;
 
@@ -1559,6 +1562,16 @@ namespace cryptonote
      */
     bool check_block_timestamp(const block& b, uint64_t& median_ts) const;
     bool check_block_timestamp(const block& b) const { uint64_t median_ts; return check_block_timestamp(b, median_ts); }
+
+    /**
+     * @brief Opacra: blocks after genesis must not be dated before the network's launch time
+     *
+     * Without it, anyone who knew the genesis before launch could mine a private chain with
+     * honest-looking timestamps and release it at launch. With it, a pre-mined
+     * chain has to claim timestamps after the launch time, which LWMA turns into a steep
+     * difficulty rise, while the future time limit stops it being released early.
+     */
+    bool check_launch_time(const block& b, uint64_t height) const;
 
     /**
      * @brief checks a block's timestamp

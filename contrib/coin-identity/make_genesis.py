@@ -5,7 +5,9 @@
                          --launch "2026-10-25 18:00"
       writes a new network ID, the genesis transaction (built from the message alone, see
       coinid.genesis_tx) and the launch time into src/cryptonote_config.h and
-      src/hardforks/hardforks.cpp, and prints what changed
+      src/hardforks/hardforks.cpp, and prints what changed. The launch time is a consensus
+      rule (since 19 Oct 2026): no block after genesis may be dated before it, and nodes accept block 1
+      from 3 minutes before it. Use the minute mining opens, never later.
 
   make_genesis.py verify --network testnet [--build build/portable]
       builds opacrad, starts it offline on a scratch folder, and checks that block 0 carries
@@ -83,7 +85,9 @@ def apply(a):
     j = hf.index("};", i)
     body = hf[i:j]
     body, n3 = re.subn(r"\{ 1, 0, 0, \d+ \}", "{ 1, 0, 0, %d }" % (t - 1), body, count=1)
-    body, n4 = re.subn(r"\{ 16, 1, 0, \d+ \}", "{ 16, 1, 0, %d }" % t, body, count=1)
+    # the launch entry, with any old comment on its line replaced
+    body, n4 = re.subn(r"\{ 16, 1, 0, \d+ \},[^\n]*", "{ 16, 1, 0, %d }, // launch: %s UTC (make_genesis.py)" % (t, a.launch),
+                       body, count=1)
     if (n3, n4) != (1, 1):
         sys.exit("Could not find the fork table entries for %s" % a.network)
     HARDFORKS.write_text(hf[:i] + body + hf[j:])
@@ -94,6 +98,9 @@ def apply(a):
     print("Genesis tx:     %s" % tx)
     print("Output key:     %s (derived from the message: nobody holds its secret key)" % out_key)
     print("Launch time:    %s UTC (%d) written into the fork table" % (a.launch, t))
+    print("                consensus: no block 1 before this; mining works from 3 minutes before it")
+    if t > time.time() + 2 * 86400:
+        print("WARNING: the launch time is more than 2 days away; nobody can mine this chain until then")
     print("Next: make_genesis.py verify --network %s" % a.network)
 
 

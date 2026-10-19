@@ -189,15 +189,15 @@ namespace cryptonote {
   // launch-day swings from the startup guess cannot split nodes.
   //
   // Security audit (October 2026): the first version exempted side blocks below height
-  // 122 forever. Block 1 has difficulty 1 and a side chain forked from genesis (timestamp
+  // 122 forever. Block 1 then had difficulty 1 and a side chain forked from genesis (timestamp
   // 0) can claim days of slow blocks, so side blocks at heights 1-121 cost 1-10,000
   // hashes for as long as the chain exists, and anyone could flood any node with them.
   // Now the exemption depends only on the main chain's age:
   //  - In the first hour (main chain below 122 blocks) the floor is 1/4 of the smaller of
   //    the main chain's reference difficulty and the startup guess, which honest blocks
   //    always meet, even when LWMA jumps after the startup guess. Block 1 costs the startup
-  //    guess too (Blockchain::get_difficulty_for_next_block; the public testnet's existing
-  //    block 1 keeps difficulty 1), so no height is free.
+  //    guess too on every network (Blockchain::get_difficulty_for_next_block), so no height
+  //    is free.
   //  - After that every side block, at any height, needs 1/4 of the main chain's reference
   //    difficulty (Blockchain::get_alt_floor_reference). Trade-off: a launch partition that
   //    splits within the first 12 blocks and lasts beyond the first hour cannot merge by
@@ -224,7 +224,8 @@ namespace cryptonote {
     }
 
     const size_t length = timestamps.size();
-    // Genesis (height 0) and block 1 see no previous blocks: difficulty 1, as in Monero.
+    // No previous blocks (only genesis asks this): difficulty 1, as in Monero. Block 1 gets the
+    // startup guess from Blockchain::get_difficulty_for_next_block.
     if (length == 0)
       return 1;
     // Startup: a fixed, deliberately low guess until a few blocks exist.

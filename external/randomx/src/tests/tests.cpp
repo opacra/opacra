@@ -1028,6 +1028,16 @@ int main() {
 
 	runTest("Hash test 1f (ISUB_R edge case, interpreter)", stringsEqual(RANDOMX_ARGON_SALT, "RandomX\x03"), test_f);
 
+	// Opacra (RandomOPCA salt): the reference vector in docs/OPACRA_SPEC.md. The upstream
+	// vectors above only run with Monero's salt, so this is the hash test that runs here.
+	auto test_opca = [&] {
+		char hash[RANDOMX_HASH_SIZE];
+		calcStringHash("test key 000", "This is a test", &hash);
+		assert(equalsHex(hash, "460b9dbac09aa34bd64b275599f95195d2cd2eaf3dd6eb0b1e2631d9d3e7cafc"));
+	};
+
+	runTest("Hash test 1o (RandomOPCA, interpreter)", stringsEqual(RANDOMX_ARGON_SALT, "RandomOPCA\x01"), test_opca);
+
 	if (RANDOMX_HAVE_COMPILER) {
 		randomx_release_cache(cache);
 		randomx_destroy_vm(vm);
@@ -1052,6 +1062,8 @@ int main() {
 	runTest("Hash test 2e (compiler)", RANDOMX_HAVE_COMPILER && stringsEqual(RANDOMX_ARGON_SALT, "RandomX\x03"), test_e);
 
 	runTest("Hash test 2f (ISUB_R edge case, compiler)", stringsEqual(RANDOMX_ARGON_SALT, "RandomX\x03"), test_f);
+
+	runTest("Hash test 2o (RandomOPCA, compiler)", RANDOMX_HAVE_COMPILER && stringsEqual(RANDOMX_ARGON_SALT, "RandomOPCA\x01"), test_opca);
 
 	auto flags = randomx_get_flags();
 
@@ -1101,11 +1113,19 @@ int main() {
 		assert(equalsHex(hash3, "c36d4ed4191e617309867ed66a443be4075014e2b061bcdaf9ce7b721d2b77a8"));
 	});
 
-	runTest("Preserve rounding mode", RANDOMX_FREQ_CFROUND > 0, []() {
+	runTest("Preserve rounding mode", RANDOMX_FREQ_CFROUND > 0 && stringsEqual(RANDOMX_ARGON_SALT, "RandomX\x03"), []() {
 		rx_set_rounding_mode(RoundToNearest);
 		char hash[RANDOMX_HASH_SIZE];
 		calcStringHash("test key 000", "Lorem ipsum dolor sit amet", &hash);
 		assert(equalsHex(hash, "300a0adb47603dedb42228ccb2b211104f4da45af709cd7547cd049e9489c969"));
+		assert(rx_get_rounding_mode() == RoundToNearest);
+	});
+
+	runTest("Preserve rounding mode (RandomOPCA)", RANDOMX_FREQ_CFROUND > 0 && stringsEqual(RANDOMX_ARGON_SALT, "RandomOPCA\x01"), []() {
+		rx_set_rounding_mode(RoundToNearest);
+		char hash[RANDOMX_HASH_SIZE];
+		calcStringHash("test key 000", "This is a test", &hash);
+		assert(equalsHex(hash, "460b9dbac09aa34bd64b275599f95195d2cd2eaf3dd6eb0b1e2631d9d3e7cafc"));
 		assert(rx_get_rounding_mode() == RoundToNearest);
 	});
 

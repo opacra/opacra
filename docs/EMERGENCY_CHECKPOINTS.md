@@ -16,8 +16,11 @@ That protects against a single hijacked or mistyped zone.
 
 ## Who enforces
 
-- **Ordinary nodes** read the checkpoints every 5 minutes and log a warning if their chain
-  disagrees. They are not forced onto a chain by the project.
+- **Nodes started by hand** read the checkpoints every 5 minutes and log a warning if their
+  chain disagrees. They are not forced onto a chain by the project.
+- **Home nodes started by the testnet launchers** (`start-testnet`) enforce them too, since
+  the attack rehearsal, so home miners follow an emergency checkpoint without waiting for a
+  release. Whether the mainnet launchers do the same is decided before mainnet.
 - **Seeds, exchanges and pools** run with `enforce-dns-checkpointing=1` (in
   `contrib/launch/opacra.conf`). They refuse any reorganisation at or below the newest
   checkpoint, and if their own chain disagrees they roll back to before it and follow the
@@ -42,8 +45,10 @@ normal times, and an emergency only means adding one more record.
 **A new chain starts with its genesis as the standing record** (`0:<genesis hash>`, printed
 by `make_genesis.py verify`), published on both domains on launch day in place of any older
 record. Without any record, every enforcing node (seeds, and home nodes started by the
-launchers) logs a red "none could be read" warning and the seeds send an alert. The genesis
-is safe to publish: every node already has it built in.
+launchers) logs a red "none could be read" warning and the seeds send an alert. Publish it
+at the launch minute, not before: until mining opens the genesis is kept private, because
+anyone who has it could start mining in secret. From then on every node has it
+built in.
 
 ## Keep it ready (before you ever need it)
 
@@ -106,18 +111,22 @@ enforcing nodes would stall on a block that never comes.
      chain): the newest block both your nodes agree on, at least 5 blocks below the tip.
    - **Save the honest blocks first.** After a switch, nodes keep them only as side blocks,
      and drop those when they restart unless they run with `--keep-alt-blocks`. Before
-     restarting anything, on the seed: `contrib/launch/save-side-chain save` (in the
-     package: `launch-kit/save-side-chain`). It saves them and prints the checkpoint to publish
-     (`H:hash`, the first block after the split). It also saves the 10 blocks both chains share
+     restarting anything, on the seed: `contrib/launch/save-side-chain save --network mainnet`
+     (testnet: `--network testnet`; in the package: `launch-kit/save-side-chain`). It checks the
+     node is on that network, saves the blocks and prints the checkpoint to publish
+     (`H:hash`, the first block after the split) with the TXT record name for that network. It also saves the 10 blocks both chains share
      below the split, which a node needs after the checkpoint rolls it back. A node left stalled on the attacker's blocks
-     recovers with: restart it with `--offline`, `save-side-chain restore honest-blocks.json`,
-     then restart it normally.
+     recovers with: restart it with `--offline`,
+     `save-side-chain restore honest-blocks.json --network mainnet`, then restart it normally.
 3. **Read its hash from two separate nodes, and the explorer.** All three must match
-   character for character.
-   - PC (Opacra Ubuntu tab):
-     `cd ~/opacra && RPC=127.0.0.1:29971 contrib/launch/make_checkpoint.sh H`
-     (testnet; mainnet RPC is 127.0.0.1:29961)
-   - Seed: `curl -s http://127.0.0.1:29971/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_block_header_by_height","params":{"height":H}}' | grep '"hash"'`
+   character for character, and all must be on the network you publish for (mainnet:
+   record `checkpoints`, port 29961; testnet: record `testpoints`, port 29971).
+   - PC (Opacra Ubuntu tab), mainnet:
+     `cd ~/opacra && NETWORK=mainnet RPC=127.0.0.1:29961 contrib/launch/make_checkpoint.sh H`
+     (testnet: `NETWORK=testnet RPC=127.0.0.1:29971`). Its first line names the network; it
+     stops if the node is on another one.
+   - Seed, mainnet: `curl -s http://127.0.0.1:29961/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_block_header_by_height","params":{"height":H}}' | grep '"hash"'`
+     (testnet: port 29971)
    - Explorer: https://explorer.opacra.org/block/H
 4. **Publish under both domains**, in Namecheap (opacraproject account), Advanced DNS →
    Add New Record:
@@ -128,7 +137,8 @@ enforcing nodes would stall on a block that never comes.
    `dig +short TXT testpoints.opacra.com` must print the same lines.
 6. **Check the seed** within about 5 minutes (the phone also gets "checkpoint now enforced at
    block H" from the seed's watchdog):
-   `journalctl -u opacrad --since "10 min ago" | grep "DNS checkpoint"` shows
+   `journalctl -u opacrad-mainnet --since "10 min ago" | grep "DNS checkpoint"` (testnet:
+   `-u opacrad`) shows
    `DNS checkpoint enforced: block H = …`.
 7. **Tell those who need to know**: exchanges, pools, the website and announcement
    channels. Give the height and hash, and ask them to wait for more confirmations.
@@ -142,7 +152,7 @@ enforcing nodes would stall on a block that never comes.
 Enforcing nodes keep every DNS checkpoint they have read until they restart, so:
 
 - **To remove one**, delete the record from both domains, then restart the enforcing
-  nodes (seed: `systemctl restart opacrad`). Until they restart they keep enforcing it.
+  nodes (seed: `systemctl restart opacrad-mainnet`; testnet: `opacrad`). Until they restart they keep enforcing it.
   The seed's phone alert says "checkpoint at block H removed from DNS" when this happens.
   (Drill on 15 Oct 2026, v0.2.4: block 13900 published on both domains, enforced within 5
   minutes, removed, seed restarted; every step alerted.)

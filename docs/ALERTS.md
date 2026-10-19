@@ -40,9 +40,12 @@ ssh opacra-seed1 'bash /root/install-alerts.sh testnet'
 It prints a topic name. On the phone: install **ntfy**, tap **+**, type the topic exactly,
 leave the server as ntfy.sh, Subscribe. Then on the seed: `opacra-alert test`.
 
-A second seed joins the same feed with `bash install-alerts.sh testnet <topic>`. For mainnet
+A second seed joins the same feed with `bash install-alerts.sh testnet -` and pastes the topic
+when asked (it is not typed on the command line, where shell history and `ps` would keep it).
+A second network on a server that already has alerts reuses the topic by itself. For mainnet
 use `mainnet` (it reads RPC port 29961). Anyone who knows the topic can read the alerts (public
-chain data) or send fake ones, so share it only with seed operators. To change it, edit
+chain data) or send fake ones, so share it only with seed operators, and confirm any alarming
+alert on the explorer and a second seed before acting on it. To change it, edit
 `/etc/opacra/alert.conf` and resubscribe.
 
 ## Files on the seed

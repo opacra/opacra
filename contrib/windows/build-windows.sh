@@ -50,7 +50,7 @@ cp LICENSE "$STAGE/"
 # not launched; "Start Opacra testnet" does everything a tester needs in one window.
 cat > "$STAGE/Start Opacra testnet.bat" <<'BAT'
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 title Opacra testnet
 if exist testnet-wallet.address.txt goto start
@@ -65,7 +65,11 @@ echo.
 echo  Wallet ready. Written the 25 words down? Press any key to start mining.
 pause >nul
 :start
-set /p ADDR=<testnet-wallet.address.txt
+rem The address file is checked before every use (it may have been copied from an older
+rem folder): only letters and digits, so nothing in it can run as a command.
+findstr /r /x "T[0-9A-Za-z]*" testnet-wallet.address.txt >nul || goto badaddress
+set "ADDR="
+set /p "ADDR=" < testnet-wallet.address.txt
 rem To choose how many CPU threads mine, put a number after the = sign on the next line,
 rem for example  set MINE_THREADS=4  . Leave it empty to use a quarter of this PC's threads.
 set MINE_THREADS=
@@ -75,14 +79,21 @@ if %THREADS% LSS 1 set THREADS=1
 cls
 echo.
 echo  Opacra testnet: joining the network and mining with %THREADS% threads to your wallet
-echo  %ADDR%
+echo  !ADDR!
 echo.
 echo  Leave this window open while you mine; close it to stop. Mining starts once the
 echo  node has caught up, usually within a few minutes. Type  status  and press Enter
 echo  to check. To see your coins, double-click "Open testnet wallet".
 echo  To mine with more or fewer threads, see README.txt.
 echo.
-opacrad.exe --testnet --enforce-dns-checkpointing --start-mining %ADDR% --mining-threads %THREADS%
+opacrad.exe --testnet --enforce-dns-checkpointing --start-mining "!ADDR!" --mining-threads %THREADS%
+pause
+exit /b
+:badaddress
+echo.
+echo  testnet-wallet.address.txt does not hold an Opacra testnet address (letters and
+echo  digits only, starting with T). Copy the right file from your old Opacra folder, then
+echo  double-click "Start Opacra testnet" again.
 pause
 exit /b
 :failed

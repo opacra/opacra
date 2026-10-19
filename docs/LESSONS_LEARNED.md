@@ -3,6 +3,16 @@
 Mistakes and surprises from building and testing Opacra, each with the rule that stops it
 happening again. Newest first. Read this before a release, a drill or a launch step.
 
+## 19 Oct 2026: independent review fixes
+
+| What went wrong | Why | Rule from now on |
+|---|---|---|
+| The launch checklist said to publish the genesis hash and the release a week before mining opened | Nobody asked what someone could do with the genesis in that week: mine a private chain and take over at launch | Anything that reveals the genesis (source, binaries, hash, a running seed, the DNS record) stays private until the launch minute. The coin now also refuses blocks dated before the launch time |
+| An emergency checkpoint at block 1 or 2 would have crashed or misled every enforcing node | Monero's rollback (`height - 2`) wraps around below 2; Monero never checkpoints such low heights | Test every safety tool at the edges (block 1, block 2, the first minutes), not only in the middle of a chain |
+| `save-side-chain` and `make_checkpoint.sh` worked on whatever node answered, testnet or mainnet | Defaults pointed at the testnet port | Emergency tools take the network explicitly and check the node is on it before printing anything to publish |
+| The Windows launcher's address check from v0.2.2 had quietly gone when the launcher was rewritten | Rewrites dropped an earlier fix with no test to catch it | When rewriting a script, list the fixes the old one carried and keep each; batch-file checks are tested on real Windows (wine's `findstr` gives wrong answers) |
+| Open review findings were nearly written into public repository docs | Writing up fixes and open items in one pass | Public files describe fixes only. Open findings stay in the private project docs until fixed. Before each commit, search the diff for finding IDs |
+
 ## 18 Oct 2026 (afternoon): release-candidate checks
 
 | What went wrong | Why | Rule from now on |

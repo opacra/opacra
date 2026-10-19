@@ -35,12 +35,13 @@
 //   version 1  - genesis block only
 //   version 16 - every block from height 1: RingCT, CLSAG, Bulletproofs+, view tags,
 //                16-member rings, RandomX proof of work.
-// The time of the last entry must be the launch time (UTC epoch seconds): wallets use it
-// to estimate the chain height.  Future network upgrades are appended as new versions
+// The time of the height-1 entry is the launch time (UTC epoch seconds). It is a consensus
+// rule (Blockchain::check_launch_time): no block after genesis may be dated before it.
+// Wallets also use it to estimate the chain height. make_genesis.py --launch sets it.  Future network upgrades are appended as new versions
 // (17, 18, ...) with an activation height and time.
 const hardfork_t mainnet_hard_forks[] = {
   { 1, 0, 0, 1790553599 },
-  { 16, 1, 0, 1790553600 }, // 2026-09-28 00:00:00 UTC - update to the real launch time
+  { 16, 1, 0, 1790553600 }, // placeholder, in the past: make_genesis.py sets the real launch time
 };
 const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainnet_hard_forks[0]);
 const uint64_t mainnet_hard_fork_version_1_till = 0;

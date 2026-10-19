@@ -41,9 +41,16 @@ python3 coinid.py genesis --reward 2384185791015 \
 - [ ] Put the prefixes, network IDs and genesis transactions into `src/cryptonote_config.h`.
       The genesis `--reward` must stay `MONEY_SUPPLY >> EMISSION_SPEED_FACTOR_PER_BLOCK`
       (2384185791015 with the current parameters) or the genesis block is rejected.
-- [ ] A newspaper headline in the genesis message proves no blocks were mined before that date.
-- [ ] Set the time of the last entry in each table in `src/hardforks/hardforks.cpp` to
-      the launch time (UTC epoch seconds). Wallets use it to estimate chain height.
+- [ ] A newspaper headline in the genesis message proves no blocks were mined before that date,
+      **only if the genesis stays unknown until launch day**: make it that morning
+      (`contrib/coin-identity/make_genesis.py`) and publish nothing that reveals it, not the
+      source, the binaries or the genesis hash, before mining opens.
+- [ ] Set the time of the height-1 entry in each table in `src/hardforks/hardforks.cpp` to
+      the launch time (UTC epoch seconds; `make_genesis.py --launch` does this). It is a
+      consensus rule since 19 Oct 2026: every block after genesis must be dated
+      at or after it, so nodes accept block 1 from 3 minutes before it (the future time
+      limit) and a chain mined in secret can't carry earlier dates. Use the minute mining
+      opens, never later. Wallets also use it to estimate chain height.
 - [ ] Build, start a node once, and read the genesis hash:
       `curl -s localhost:29961/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_block_header_by_height","params":{"height":0}}'`
       Add `ADD_CHECKPOINT2(0, "<genesis hash>", "0x1");` in `src/checkpoints/checkpoints.cpp`.
@@ -115,8 +122,9 @@ data in `/var/lib/opacra/mainnet`, log `/var/lib/opacra/opacra-mainnet.log`, ale
 reuses the server's existing alert topic). All networks share the programs in `/opt/opacra`:
 after installing a new package for one network, restart the others too.
 
-The first seed prints a phone-alert topic (`docs/ALERTS.md`); give it to the others as a third
-argument so all seeds share one alert feed. The seeds are built into the software
+The first seed prints a phone-alert topic (`docs/ALERTS.md`). On the other seeds give `-` as a
+third argument (`ssh -t`) and paste it when asked, so all seeds share one alert feed. A second
+network on the same server reuses the topic by itself. The seeds are built into the software
 (`src/coin_network.h`), so they find each other. Check with `journalctl -u opacrad -f`
 (mainnet: `-u opacrad-mainnet`).
 
@@ -147,18 +155,25 @@ argument so all seeds share one alert feed. The seeds are built into the softwar
 
 ## 8. Launch day
 
-1. T−7 days: announce the exact launch time, the release tag, binary hashes and the
-   genesis hash. State clearly that there is **no premine** and that 5% of every block
-   goes to the development fund, with the fund's address and view key.
-2. T−1 hour: seed nodes, explorer and pools running and synced at height 0.
+1. T−7 days: announce the exact launch time (UTC). State clearly that there is **no
+   premine** and that 5% of every block goes to the development fund, with the fund's
+   address and view key. **Do not** publish the genesis, its hash, the release tag or
+   binaries: anyone who has the genesis can start mining in private. The
+   genesis is made from that morning's headline and goes public with the downloads at T
+   (the launch-day runbook).
+2. T−1 hour: seed nodes, explorer and pools installed and ready at height 0, but stopped
+   until T (a running seed would reveal the genesis hash to anyone who connects).
    A node only allows mining (`start_mining`, `get_block_template`) once a peer has
    reported a height at least equal to its own. Seeds connected to each other at the
    genesis block satisfy this. A node that is alone, or ahead of every peer it can reach,
    answers `BUSY` instead (seen when testnet 2 started on 10 Oct 2026). Have at least two
-   seeds connected before T. To bootstrap a lone node anyway, start it with `--offline`,
+   seeds connected at T (start them within a minute of each other). To bootstrap a lone node anyway, start it with `--offline`,
    then restart it normally once a peer has caught up.
-3. T: announce "mining is open". Full rewards from block 1, and the time was announced a
-   week ahead, so everyone could be ready for the first block.
+3. T: start the seeds, publish the downloads and the source, add the DNS record
+   `0:<genesis hash>` on both domains, and announce "mining is open". Full rewards from
+   block 1, and the time was announced a week ahead, so everyone could be ready.
+   About 30 minutes later, publish the first checkpoint record (`daily-checkpoint`), so
+   nodes lock in the first blocks quickly.
 4. Watch the explorer, `opacrad status` on all seeds and the phone alerts. Block times settle after about
    60 blocks (30 minutes).
 5. After ~1 day: run `opacra-audit --rpc 127.0.0.1:29961` on a seed and publish the report;

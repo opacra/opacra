@@ -334,6 +334,17 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
     else
       m_hardfork = new HardFork(*db, 1, mainnet_hard_fork_version_1_till);
   }
+  // Opacra (19 Oct 2026 review): the launch time is the fork table's height-1 entry
+  m_launch_time = 0;
+  {
+    const hardfork_t *table = m_nettype == TESTNET ? testnet_hard_forks : m_nettype == STAGENET ? stagenet_hard_forks :
+        m_nettype == MAINNET ? mainnet_hard_forks : nullptr;
+    const size_t n_forks = m_nettype == TESTNET ? num_testnet_hard_forks : m_nettype == STAGENET ? num_stagenet_hard_forks :
+        m_nettype == MAINNET ? num_mainnet_hard_forks : 0;
+    for (size_t n = 0; table && n < n_forks; ++n)
+      if (table[n].height == 1)
+        m_launch_time = table[n].time;
+  }
   if (m_nettype == FAKECHAIN)
   {
     for (size_t n = 0; test_options->hard_forks[n].first; ++n)
@@ -1089,6 +1100,12 @@ bool Blockchain::rollback_blockchain_switching(std::list<block>& original_chain,
   {
     return true;
   }
+  // Opacra (19 Oct 2026 review): the genesis block can never be removed
+  if (rollback_height < 1)
+  {
+    MERROR("Refusing to roll back below the genesis block; rolling back to height 1 instead");
+    rollback_height = 1;
+  }
 
   m_timestamps_and_difficulties_height = 0;
   m_reset_timestamps_and_difficulties_height = true;
@@ -1389,7 +1406,7 @@ bool Blockchain::validate_miner_transaction(const block& b, uint64_t height, siz
     get_last_n_blocks_weights(last_blocks_weights, CRYPTONOTE_REWARD_BLOCKS_WINDOW);
     median_weight = epee::misc_utils::median(last_blocks_weights);
   }
-  // Opacra: includes the launch slow-start ramp (must match construct_miner_tx)
+  // Opacra: the reward at this height (must match construct_miner_tx)
   if (!get_block_reward_at_height(median_weight, cumulative_block_weight, already_generated_coins, base_reward, version, height))
   {
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
@@ -1697,6 +1714,11 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   {
     b.timestamp = median_ts;
   }
+  // Opacra (19 Oct 2026 review): never date a template before the launch time. Within the future
+  // time limit of the launch (the last 3 minutes before it) such a block is accepted;
+  // earlier it is "too new" and waits, so mining in effect opens at the launch time.
+  if (b.timestamp < m_launch_time)
+    b.timestamp = m_launch_time;
 
   CHECK_AND_ASSERT_MES(diffic, false, "difficulty overhead.");
 
@@ -2026,6 +2048,12 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     // (not earlier than the median of the last X blocks).
     // Opacra: same rule as the main chain, which skips the check below height
     // BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW.
+    if (!check_launch_time(b, bei.height))
+    {
+      MERROR_VER("Block with id: " << id << std::endl << " for alternative chain is dated before the launch time: " << b.timestamp);
+      bvc.m_verifivation_failed = true;
+      return false;
+    }
     if(bei.height >= BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW && !check_block_timestamp(timestamps, b))
     {
       MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, has invalid timestamp: " << b.timestamp);
@@ -4120,9 +4148,26 @@ bool Blockchain::check_block_timestamp(std::vector<uint64_t>& timestamps, const 
 //   true if the block's timestamp is not less than the timestamp of the
 //       median of the selected blocks
 //   false otherwise
+bool Blockchain::check_launch_time(const block& b, uint64_t height) const
+{
+  if (height >= 1 && b.timestamp < m_launch_time)
+  {
+    MERROR_VER("Block at height " << height << " is dated " << b.timestamp << ", before this network's launch time "
+        << m_launch_time << ": refused");
+    return false;
+  }
+  return true;
+}
+//------------------------------------------------------------------
 bool Blockchain::check_block_timestamp(const block& b, uint64_t& median_ts) const
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
+  // Opacra (19 Oct 2026 review): main-chain blocks are always at the next height
+  if (!check_launch_time(b, m_db->height()))
+  {
+    median_ts = m_launch_time;
+    return false;
+  }
   if(b.timestamp > (uint64_t)time(NULL) + CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT)
   {
     MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", bigger than local time + 2 hours");
@@ -4923,11 +4968,12 @@ void Blockchain::check_against_checkpoints(const checkpoints& points, bool enfor
 
   CRITICAL_REGION_LOCAL(m_blockchain_lock);
   stop_batch = m_db->batch_start();
-  const uint64_t blockchain_height = m_db->height();
   for (const auto& pt : pts)
   {
-    // if the checkpoint is for a block we don't have yet, move on
-    if (pt.first >= blockchain_height)
+    // if the checkpoint is for a block we don't have yet, move on. Opacra: read the height
+    // afresh each time; a rollback for an earlier checkpoint may have just lowered it (Monero
+    // kept the old height and then asked the database for a block it had removed)
+    if (pt.first >= m_db->height())
     {
       continue;
     }
@@ -4939,7 +4985,10 @@ void Blockchain::check_against_checkpoints(const checkpoints& points, bool enfor
       {
         LOG_ERROR("Local blockchain failed to pass a checkpoint, rolling back!");
         std::list<block> empty;
-        rollback_blockchain_switching(empty, pt.first - 2);
+        // Opacra (19 Oct 2026 review): never below genesis. Monero's pt.first - 2 wrapped around for a
+        // checkpoint at block 1 (nothing rolled back, the node locked out of the honest chain)
+        // and tried to pop the genesis block for one at block 2 (the node crashed)
+        rollback_blockchain_switching(empty, pt.first > 2 ? pt.first - 2 : 1);
       }
       else
       {
