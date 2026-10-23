@@ -3,6 +3,12 @@
 Mistakes and surprises from building and testing Opacra, each with the rule that stops it
 happening again. Newest first. Read this before a release, a drill or a launch step.
 
+## 23 Oct 2026: release candidate v0.2.5
+
+| What went wrong | Why | Rule from now on |
+|---|---|---|
+| The testnet 3 runbook still published the downloads and pushed the genesis to GitHub 90 minutes before mining opened, after the mainnet runbook had been fixed | The two runbooks were updated separately after the review, and the rehearsal one was missed | A rehearsal follows the real day's order exactly. When one runbook changes, check the other the same day |
+
 ## 19 Oct 2026: independent review fixes
 
 | What went wrong | Why | Rule from now on |
