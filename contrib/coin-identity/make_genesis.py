@@ -92,12 +92,25 @@ def apply(a):
         sys.exit("Could not find the fork table entries for %s" % a.network)
     HARDFORKS.write_text(hf[:i] + body + hf[j:])
 
+    # a new genesis makes every hard-coded checkpoint of this network wrong (they name the old
+    # chain's blocks), and a node refuses to start when its genesis fails one: remove them all;
+    # verify --checkpoint then adds the new genesis
+    cp = CHECKPOINTS.read_text()
+    marker = "    if (nettype == TESTNET)\n    {\n" if a.network == "testnet" else "    if (nettype == MAINNET)\n    {\n"
+    if marker not in cp:
+        sys.exit("Could not find the %s block in %s" % (a.network, CHECKPOINTS))
+    k = cp.index(marker) + len(marker)
+    end = cp.index("\n    }\n", k)
+    block, n5 = re.subn(r"\n?[ \t]*ADD_CHECKPOINT2\([^;]*\);[^\n]*", "", cp[k:end])
+    CHECKPOINTS.write_text(cp[:k] + block.lstrip("\n") + cp[end:] if n5 else cp)
+
     print("Network:        %s" % a.network)
     print("Message:        %s" % msg)
     print("Network ID:     %s" % coinid.c_uuid(nid))
     print("Genesis tx:     %s" % tx)
     print("Output key:     %s (derived from the message: nobody holds its secret key)" % out_key)
     print("Launch time:    %s UTC (%d) written into the fork table" % (a.launch, t))
+    print("Checkpoints:    %d old %s checkpoint(s) removed from checkpoints.cpp" % (n5, a.network))
     print("                consensus: no block 1 before this; mining works from 3 minutes before it")
     if t > time.time() + 2 * 86400:
         print("WARNING: the launch time is more than 2 days away; nobody can mine this chain until then")

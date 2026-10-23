@@ -347,9 +347,9 @@ namespace config
     // the launch-day procedure, so testnet 2 and earlier nodes never connect to it.
     // (The values below are from the 18 Oct 2026 practice run; replaced on launch day.)
     boost::uuids::uuid const NETWORK_ID = { {
-        0x0B, 0xEC, 0xAB, 0xDE, 0x40, 0x6D, 0xDD, 0xEB, 0xA0, 0xE6, 0x12, 0xC8, 0xCD, 0xD6, 0x2A, 0x0F
+        0xA6, 0x0D, 0x41, 0x94, 0x73, 0x76, 0xE0, 0x07, 0x3D, 0xF5, 0xA5, 0xF8, 0x89, 0xCA, 0x6A, 0xE2
       } };
-    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b1450228d2e34a52baabd9b2d2895922b5917ab325fd5aefb8789df2c64f5e33db56d65701bcac966ca80f8b87b92db0a928c3666fdb2e9865440c81e4497989903b0a917e02344f706163726120746573746e657420332067656e65736973207c20323032362d31302d3138207c2070726163746963652072756e";
+    std::string const GENESIS_TX = "013c01ff0001a7a4b0e4b14502aeec437daea7da143bb3281de95f34c4caf1da7625ad40abfc32215127a20bf3850101059a55afede9b82884bbf08eda5ed6171be387e5054db9c2da6adb120f0539c102624f706163726120746573746e657420332067656e65736973207c20323032362d31302d3233207c204a6170616e2773204d4d58206d697373696f6e206c61756e6368657320746f20736f6c7665204d61727469616e206d6f6f6e7320656e69676d61";
     uint32_t const GENESIS_NONCE = 10003;
     // Development fund: receives OPACRA_DEV_FUND_PERCENT of every block subsidy. Must be a
     // standard address. The project's offline testnet fund wallet (created 3 Oct 2026).

@@ -190,7 +190,7 @@ namespace cryptonote
     // or the helper script contrib/launch/make_checkpoint.sh.
     if (nettype == TESTNET)
     {
-      ADD_CHECKPOINT2(0, "b6c548f3f4b6c326f7422dbd5a01d532aa65fc5af7c954398539797141f0ca9a", "0x1");
+      ADD_CHECKPOINT2(0, "6a34e62860464e20baca5655351ee2e605e64a5cd1ad3e48751223a44c547a19", "0x1");
       // testnet 3: checkpoints are added once its genesis is final and the chain has grown
       return true;
     }

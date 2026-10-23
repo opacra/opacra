@@ -47,8 +47,8 @@ const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainne
 const uint64_t mainnet_hard_fork_version_1_till = 0;
 
 const hardfork_t testnet_hard_forks[] = {
-  { 1, 0, 0, 1792324799 },
-  { 16, 1, 0, 1792324800 },
+  { 1, 0, 0, 1792785599 },
+  { 16, 1, 0, 1792785600 }, // launch: 2026-10-23 20:00 UTC (make_genesis.py)
 };
 const size_t num_testnet_hard_forks = sizeof(testnet_hard_forks) / sizeof(testnet_hard_forks[0]);
 const uint64_t testnet_hard_fork_version_1_till = 0;

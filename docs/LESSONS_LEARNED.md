@@ -7,6 +7,7 @@ happening again. Newest first. Read this before a release, a drill or a launch s
 
 | What went wrong | Why | Rule from now on |
 |---|---|---|
+| On testnet 3's genesis day, `make_genesis.py verify` failed: "The node did not start" | The code still held the practice genesis as testnet's checkpoint at block 0, and since 18 Oct testnet loads its built-in checkpoints, so the new genesis failed it. The practice run on 18 Oct came before that change | `make_genesis.py apply` removes the network's old checkpoints (a new genesis makes them all wrong). After any change to start-up or checkpoint code, rerun the genesis procedure end to end |
 | The testnet 3 runbook still published the downloads and pushed the genesis to GitHub 90 minutes before mining opened, after the mainnet runbook had been fixed | The two runbooks were updated separately after the review, and the rehearsal one was missed | A rehearsal follows the real day's order exactly. When one runbook changes, check the other the same day |
 
 ## 19 Oct 2026: independent review fixes
