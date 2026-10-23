@@ -2,6 +2,9 @@
 # Opacra testnet in one command: installs the runtime libraries if they are missing,
 # creates your wallet the first time, then runs a node that mines to it.
 #   ./start-testnet.sh            (from the unpacked release folder)
+#   MINE_THREADS=N ./start-testnet.sh          mine with N threads
+#   ENFORCE_CHECKPOINTS=1 ./start-testnet.sh   follow the project's emergency checkpoints (only
+#                                              when opacra.org asks for it during an attack)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -40,6 +43,13 @@ echo " node has caught up, usually within a few minutes. Type  status  to check.
 echo " your coins, open a second terminal in this folder and run  ./open-wallet.sh"
 echo " To mine with N threads instead:  MINE_THREADS=N ./start-testnet.sh"
 echo
-# Enforce the project's emergency checkpoints (DNSSEC-signed, both domains must agree): in an
-# attack, a checkpoint only protects the honest chain if the miners follow it too.
-exec ./opacrad --testnet --enforce-dns-checkpointing --start-mining "$ADDR" --mining-threads "$THREADS"
+# Emergency checkpoints (DNSSEC-signed, both domains must agree) are enforced by the seeds.
+# Home nodes only warn when their chain disagrees, unless ENFORCE_CHECKPOINTS=1: during an
+# attack opacra.org asks miners to restart with it, so they follow the honest chain too.
+CHECKPOINTS=()
+if [ "${ENFORCE_CHECKPOINTS:-0}" = 1 ]; then
+  CHECKPOINTS=(--enforce-dns-checkpointing)
+  echo " Following the project's emergency checkpoints (ENFORCE_CHECKPOINTS=1)."
+  echo
+fi
+exec ./opacrad --testnet "${CHECKPOINTS[@]}" --start-mining "$ADDR" --mining-threads "$THREADS"

@@ -254,9 +254,10 @@ Network and wallet:
     connections" once, in plain words, instead of an hourly warning. A peer whose blocks a
     checkpoint refuses is blocked for 10 minutes (`OPACRA_CHECKPOINT_MISMATCH_BLOCK_SECONDS`)
     instead of 24 hours, and not scored, because after an emergency checkpoint honest nodes
-    that followed an attacker relay its chain too. The testnet launchers enforce DNS
-    checkpoints (`--enforce-dns-checkpointing`). Both from the attack rehearsal
-    (`docs/ATTACK_REHEARSAL.md`).
+    that followed an attacker relay its chain too. From the attack rehearsal
+    (`docs/ATTACK_REHEARSAL.md`). The testnet launchers enforced DNS checkpoints from then
+    until 23 Oct 2026; since v0.2.5 they only warn unless `ENFORCE_CHECKPOINTS=1`, as
+    mainnet's will (only seeds, pools and exchanges enforce by default).
 26. 18 Oct 2026 (consensus): no launch slow start on any network; block 1 costs the startup
     difficulty on every network (testnet 2's exemption removed); testnet data folder
     `testnet3`; launch-day genesis procedure `contrib/coin-identity/make_genesis.py`.

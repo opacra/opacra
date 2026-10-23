@@ -42,13 +42,18 @@ Mining threads: start-testnet.sh uses a quarter of the CPU threads. To use N thr
   MINE_THREADS=N ./start-testnet.sh
 "No incoming connections" or "No other node has connected to this one yet" is normal on a
 home connection behind a router: mining and syncing work as usual.
-start-testnet.sh follows the project's emergency checkpoints (DNSSEC-signed records under
-opacra.org and opacra.com, which must agree), used only to stop an attack and all listed on
-opacra.org. To run without them, remove --enforce-dns-checkpointing from start-testnet.sh.
+Emergency checkpoints: the project publishes them (DNSSEC-signed records under opacra.org
+and opacra.com, which must agree) only to stop an attack, and lists every one on opacra.org.
+The seeds follow them; your node only warns if its chain disagrees. If opacra.org asks miners
+to follow them during an attack, restart with:  ENFORCE_CHECKPOINTS=1 ./start-testnet.sh
 When the wallet says new coins have arrived, type  refresh  and enter your password when the
 wallet asks for it (never after the [wallet ...]: prompt).
 
-Upgrading from an earlier version: unpack the new version, then copy testnet-wallet,
+Coming from testnet 2 (v0.2.4 or older): testnet 3 is a new chain, and testnet 2 coins don't
+carry over. Unpack this version into a new folder and run start-testnet.sh: it makes a new
+wallet. Don't copy the old wallet files in; a testnet 2 wallet won't open on testnet 3.
+
+Later updates on testnet 3: unpack the new version, then copy testnet-wallet,
 testnet-wallet.keys and testnet-wallet.address.txt from the old folder into the new one
 before running start-testnet.sh. The blockchain (~/.opacra) is not downloaded again.
 

@@ -76,6 +76,11 @@ set MINE_THREADS=
 if "%MINE_THREADS%"=="" set /a MINE_THREADS=%NUMBER_OF_PROCESSORS%/4
 set /a THREADS=%MINE_THREADS%
 if %THREADS% LSS 1 set THREADS=1
+rem Emergency checkpoints: the seeds follow them; this node only warns. Only if opacra.org asks
+rem miners to follow them during an attack, change the next line to  set ENFORCE_CHECKPOINTS=1
+set ENFORCE_CHECKPOINTS=
+set "CHECKPOINTS="
+if "%ENFORCE_CHECKPOINTS%"=="1" set "CHECKPOINTS=--enforce-dns-checkpointing"
 cls
 echo.
 echo  Opacra testnet: joining the network and mining with %THREADS% threads to your wallet
@@ -86,7 +91,7 @@ echo  node has caught up, usually within a few minutes. Type  status  and press 
 echo  to check. To see your coins, double-click "Open testnet wallet".
 echo  To mine with more or fewer threads, see README.txt.
 echo.
-opacrad.exe --testnet --enforce-dns-checkpointing --start-mining "!ADDR!" --mining-threads %THREADS%
+opacrad.exe --testnet %CHECKPOINTS% --start-mining "!ADDR!" --mining-threads %THREADS%
 pause
 exit /b
 :badaddress
@@ -144,13 +149,19 @@ than about 85 C, use fewer threads.
 "No incoming connections" or "No other node has connected to this one yet": normal
 on a home connection behind a router. Mining and syncing work as usual; nothing to do.
 
-Emergency checkpoints: the miner follows the project's emergency checkpoints (published in
-DNSSEC-signed records under opacra.org and opacra.com, which must agree). They are used only
-to stop an attack, and every one is listed on opacra.org. To run without them, remove
---enforce-dns-checkpointing from "Start Opacra testnet".
+Emergency checkpoints: the project publishes them (DNSSEC-signed records under opacra.org and
+opacra.com, which must agree) only to stop an attack, and lists every one on opacra.org. The
+seeds follow them; your node only warns if its chain disagrees. If opacra.org asks miners to
+follow them during an attack: right-click "Start Opacra testnet", Edit, change the line
+set ENFORCE_CHECKPOINTS=  to  set ENFORCE_CHECKPOINTS=1 , save, and start it again.
 
-Upgrading from an earlier version: unzip the new version into its own folder, then
-copy these three files from your old folder into the new one before starting it:
+Coming from testnet 2 (v0.2.4 or older): testnet 3 is a new chain, and testnet 2 coins don't
+carry over. Unzip this version into a new folder and double-click "Start Opacra testnet":
+it makes a new wallet. Don't copy the old wallet files in; a testnet 2 wallet won't open on
+testnet 3.
+
+Later updates on testnet 3: unzip the new version into its own folder, then copy these
+three files from your old folder into the new one before starting it:
   testnet-wallet   testnet-wallet.keys   testnet-wallet.address.txt
 The blockchain is stored outside the folder, so it is not downloaded again.
 

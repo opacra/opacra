@@ -18,9 +18,10 @@ That protects against a single hijacked or mistyped zone.
 
 - **Nodes started by hand** read the checkpoints every 5 minutes and log a warning if their
   chain disagrees. They are not forced onto a chain by the project.
-- **Home nodes started by the testnet launchers** (`start-testnet`) enforce them too, since
-  the attack rehearsal, so home miners follow an emergency checkpoint without waiting for a
-  release. Whether the mainnet launchers do the same is decided before mainnet.
+- **Home nodes started by the launchers** only warn, like nodes started by hand (decided 23 Oct
+  2026 for mainnet; testnet 3 does the same so it rehearses mainnet). During an attack the
+  site asks miners to restart with enforcement on: `ENFORCE_CHECKPOINTS=1 ./start-testnet.sh`
+  on Linux, or `set ENFORCE_CHECKPOINTS=1` in the Windows start file (step 7).
 - **Seeds, exchanges and pools** run with `enforce-dns-checkpointing=1` (in
   `contrib/launch/opacra.conf`). They refuse any reorganisation at or below the newest
   checkpoint, and if their own chain disagrees they roll back to before it and follow the
@@ -44,8 +45,7 @@ normal times, and an emergency only means adding one more record.
 
 **A new chain starts with its genesis as the standing record** (`0:<genesis hash>`, printed
 by `make_genesis.py verify`), published on both domains on launch day in place of any older
-record. Without any record, every enforcing node (seeds, and home nodes started by the
-launchers) logs a red "none could be read" warning and the seeds send an alert. Publish it
+record. Without any record, every enforcing node (the seeds, pools, exchanges) logs a red "none could be read" warning and the seeds send an alert. Publish it
 at the launch minute, not before: until mining opens the genesis is kept private, because
 anyone who has it could start mining in secret. From then on every node has it
 built in.
@@ -141,7 +141,9 @@ enforcing nodes would stall on a block that never comes.
    `-u opacrad`) shows
    `DNS checkpoint enforced: block H = …`.
 7. **Tell those who need to know**: exchanges, pools, the website and announcement
-   channels. Give the height and hash, and ask them to wait for more confirmations.
+   channels. Give the height and hash, and ask them to wait for more confirmations. Ask home
+   miners to restart with enforcement on (`ENFORCE_CHECKPOINTS=1`, see "Who enforces"), so
+   they leave the attacker's chain too.
 8. **Afterwards**: build the checkpoint into the next release (`ADD_CHECKPOINT2` in
    `src/checkpoints/checkpoints.cpp`, values from `make_checkpoint.sh`). Once that release
    is widely run, remove the emergency record from both domains at the same time, keeping
