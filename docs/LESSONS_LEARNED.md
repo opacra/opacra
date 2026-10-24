@@ -3,6 +3,16 @@
 Mistakes and surprises from building and testing Opacra, each with the rule that stops it
 happening again. Newest first. Read this before a release, a drill or a launch step.
 
+## 24 Oct 2026: second independent audit, upstream sync
+
+| What went wrong | Why | Rule from now on |
+|---|---|---|
+| Opacra was 97 commits behind Monero, including security fixes (P2P, parsers, mempool, wallet, reserve proofs) | Nobody checked upstream after the fork | Every month and before every release: `git log <last synced>..upstream/release-v0.18` (in a full clone, not the shallow repository), then apply or explicitly decline each commit |
+| Resolving a conflict with "take upstream's version" (`git checkout --theirs`) nearly replaced Opacra's DNS servers and probe host with Monero's | `--theirs` takes the whole file, not just the conflicting lines | Resolve only the conflict markers; after each resolution, diff the file against the last Opacra commit and check every Opacra change is still there |
+| Upstream moved the "too far in the future" check into a shared function, which on Opacra would have hard-rejected side-chain blocks before proof of work and blamed the peer | A clean-looking upstream refactor met an Opacra rule in the same function | When upstream touches a function Opacra changed, list Opacra's rules for it and rerun the tests that cover them (block_rules_test for timestamps) |
+| `install-alerts.sh` ended silently with exit code 2 on a server with no alerts yet | `set -e -o pipefail` and a filename pattern that matched nothing | Test setup scripts on a fresh server as well as an existing one (stubbed systemctl/apt) |
+| A launch runbook started the seeds while DNS still held testnet 2's checkpoint, which they would have kept enforcing | Runbook order, plus Monero's keep-until-restart behaviour | Delete old records before launch day; add new records after the seeds start. From v0.2.6 nodes follow DNS without a restart |
+
 ## 23 Oct 2026: release candidate v0.2.5
 
 | What went wrong | Why | Rule from now on |

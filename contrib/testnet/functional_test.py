@@ -252,6 +252,28 @@ def main():
     check("outputs carry view tags", view_tags)
     check("amounts hidden on chain (all vout amounts 0)", all(o["amount"] == 0 for o in j["vout"]))
     check("no plaintext addresses in tx", addrs[1] not in raw["as_json"] and sub not in raw["as_json"])
+    # Opacra (24 Oct 2026): development fund outputs are public by design (published view key),
+    # so wallets never pick them as decoys; the node marks them in get_outs
+    ring_idx = []
+    for v in j["vin"]:
+        acc = 0
+        for off in v["key"]["key_offsets"]:
+            acc += off
+            ring_idx.append(acc)
+    ring_outs = miner.other("get_outs", outputs=[{"amount": 0, "index": i} for i in ring_idx])["outs"]
+    n_fund = sum(1 for o in ring_outs if o.get("dev_fund"))
+    real_fund = 0  # the wallet's own (real) inputs are miner outputs, never fund outputs
+    check("no ring member is a development fund output", n_fund == real_fund, f"{n_fund} of {len(ring_outs)}")
+    # outputs 0-19 belong to the coinbases of blocks 1-10 (the genesis output has a plain amount and
+    # is not among the amount-0 outputs); the node must mark exactly the last output of each
+    early = miner.other("get_outs", outputs=[{"amount": 0, "index": i} for i in range(20)], get_txid=True)["outs"]
+    cb = {miner.rpc("get_block", height=h)["miner_tx_hash"] for h in range(1, 11)}
+    pos = {}
+    for i, o in enumerate(early):
+        pos.setdefault(o["txid"], []).append(i)
+    marked = set(i for i, o in enumerate(early) if o.get("dev_fund"))
+    check("the node marks exactly the development fund outputs",
+          set(pos) == cb and marked == set(v[-1] for v in pos.values()), f"marked {sorted(marked)}")
     report["tx"].update({"inputs": len(j["vin"]), "outputs": len(j["vout"]), "ring_sizes": ring_sizes,
                          "weight_bytes": len(raw["as_hex"]) // 2, "block_height": raw.get("block_height")})
 

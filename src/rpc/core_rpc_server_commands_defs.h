@@ -545,6 +545,7 @@ namespace cryptonote
       bool unlocked;
       uint64_t height;
       crypto::hash txid;
+      bool dev_fund; // Opacra: the output is a development fund output (public by design; wallets skip it as a decoy)
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_VAL_POD_AS_BLOB(key)
@@ -552,6 +553,7 @@ namespace cryptonote
         KV_SERIALIZE(unlocked)
         KV_SERIALIZE(height)
         KV_SERIALIZE_VAL_POD_AS_BLOB(txid)
+        KV_SERIALIZE_OPT(dev_fund, false)
       END_KV_SERIALIZE_MAP()
     };
 
@@ -589,6 +591,7 @@ namespace cryptonote
       bool unlocked;
       uint64_t height;
       std::string txid;
+      bool dev_fund; // Opacra: see COMMAND_RPC_GET_OUTPUTS_BIN
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(key)
@@ -596,6 +599,7 @@ namespace cryptonote
         KV_SERIALIZE(unlocked)
         KV_SERIALIZE(height)
         KV_SERIALIZE(txid)
+        KV_SERIALIZE_OPT(dev_fund, false)
       END_KV_SERIALIZE_MAP()
     };
 

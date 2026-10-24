@@ -9623,7 +9623,9 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
     }
 
     // we ask for more, to have spares if some outputs are still locked
-    size_t base_requested_outputs_count = (size_t)((fake_outputs_count + 1) * 1.5 + 1);
+    // Opacra: twice Monero's margin, since development fund outputs (up to half of all outputs in
+    // the first weeks) are skipped as decoys below
+    size_t base_requested_outputs_count = (size_t)((fake_outputs_count + 1) * 3 + 1);
     LOG_PRINT_L2("base_requested_outputs_count: " << base_requested_outputs_count);
 
     // generate output indices to request
@@ -10094,8 +10096,9 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
           "Could not find index of picked output in requested outputs");
 
         // Try adding this output's information to result ring if output isn't invalid
-        LOG_PRINT_L2("Index " << i << "/" << requested_outputs_count << ": idx " << req.outputs[i].index << " (real " << td.m_global_output_index << "), unlocked " << daemon_resp.outs[i].unlocked << ", key " << daemon_resp.outs[i].key);
-        tx_add_fake_output(outs, req.outputs[i].index, daemon_resp.outs[i].key, daemon_resp.outs[i].mask, td.m_global_output_index, daemon_resp.outs[i].unlocked, valid_public_keys_cache);
+        LOG_PRINT_L2("Index " << i << "/" << requested_outputs_count << ": idx " << req.outputs[i].index << " (real " << td.m_global_output_index << "), unlocked " << daemon_resp.outs[i].unlocked << (daemon_resp.outs[i].dev_fund ? ", development fund output" : "") << ", key " << daemon_resp.outs[i].key);
+        // Opacra: a development fund output is not used as a decoy (its spends are public)
+        tx_add_fake_output(outs, req.outputs[i].index, daemon_resp.outs[i].key, daemon_resp.outs[i].mask, td.m_global_output_index, daemon_resp.outs[i].unlocked && !daemon_resp.outs[i].dev_fund, valid_public_keys_cache);
       }
       if (outs.back().size() < fake_outputs_count + 1)
       {

@@ -3,7 +3,8 @@
 **Private by default. Auditable by choice. Spendable in five minutes.**
 
 Opacra is a proof-of-work privacy cryptocurrency with its own blockchain. It is a
-fork of [Monero](https://github.com/monero-project/monero) v0.18.5.1. It is a
+fork of [Monero](https://github.com/monero-project/monero) v0.18.5.1, kept up to date
+with Monero's later fixes (v0.18.5.4 as of October 2026). It is a
 native coin with its own network, genesis block and consensus rules, not a token
 on another chain (no ERC-20, no smart-contract host).
 

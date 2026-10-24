@@ -2475,14 +2475,23 @@ bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMA
     }
     const uint8_t hf_version = m_hardfork->get_current_version();
     for (const auto &t: data)
-      res.outs.push_back({t.pubkey, t.commitment, is_tx_spendtime_unlocked(t.unlock_time, hf_version), t.height, crypto::null_hash});
+      res.outs.push_back({t.pubkey, t.commitment, is_tx_spendtime_unlocked(t.unlock_time, hf_version), t.height, crypto::null_hash, false});
 
-    if (req.get_txid)
+    for (size_t i = 0; i < req.outputs.size(); ++i)
     {
-      for (size_t i = 0; i < req.outputs.size(); ++i)
-      {
-        tx_out_index toi = m_db->get_output_tx_and_index(req.outputs[i].amount, req.outputs[i].index);
+      // Opacra: mark development fund outputs, the last output of every block's coinbase from
+      // block 1. The fund's view key is published, so its spends are visible and its outputs
+      // make poor decoys; wallets skip them (24 Oct 2026).
+      if (!req.get_txid && data[i].height == 0)
+        continue;
+      const tx_out_index toi = m_db->get_output_tx_and_index(req.outputs[i].amount, req.outputs[i].index);
+      if (req.get_txid)
         res.outs[i].txid = toi.first;
+      if (data[i].height >= 1)
+      {
+        cryptonote::transaction tx;
+        if (m_db->get_pruned_tx(toi.first, tx) && tx.is_coinbase() && tx.vout.size() >= 2 && toi.second + 1 == tx.vout.size())
+          res.outs[i].dev_fund = true;
       }
     }
   }

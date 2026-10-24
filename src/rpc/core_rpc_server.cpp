@@ -943,6 +943,7 @@ namespace cryptonote
       outkey.mask = epee::string_tools::pod_to_hex(i.mask);
       outkey.unlocked = i.unlocked;
       outkey.height = i.height;
+      outkey.dev_fund = i.dev_fund;
       if (req.get_txid)
         outkey.txid = epee::string_tools::pod_to_hex(i.txid);
     }

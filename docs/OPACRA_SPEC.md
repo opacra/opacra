@@ -1,7 +1,8 @@
 # Opacra technical specification
 
-Base: Monero v0.18.5.1 (tag `v0.18.5.1`, commit `4f92268`). Everything not listed here
-behaves exactly as in Monero v0.18.5.1: transaction format, RingCT/CLSAG signatures,
+Base: Monero v0.18.5.1 (tag `v0.18.5.1`, commit `4f92268`), with every later fix up to
+Monero v0.18.5.4 applied (item 28). Everything not listed here behaves exactly as in Monero
+v0.18.5.4: transaction format, RingCT/CLSAG signatures,
 Bulletproofs+, view tags, stealth addresses, subaddresses, multisig, Dandelion++,
 Tor/I2P support, LMDB storage, pruning, RPC APIs (method names unchanged).
 
@@ -280,6 +281,34 @@ Network and wallet:
     - (node policy) the background checkpoint thread catches exceptions and logs
       them instead of aborting the daemon.
     Tests: `contrib/testnet/checkpoint_rollback_test.py`, `contrib/testnet/launch_time_test.py`.
+28. 24 Oct 2026, from a second independent audit:
+    - Monero v0.18.5.2 to v0.18.5.4: the 97 upstream commits since the fork were applied one by
+      one (each keeps its upstream author and a "cherry picked from" line): P2P and parser
+      hardening, mempool DoS ordering, restricted-RPC fixes, wallet checks against malicious
+      daemons (including the reserve-proof key-image check), log injection fixes, OpenSSL 3.0.22
+      and Unbound 1.26.1 for the Windows build. Not applied: upstream's own CI workflow and its
+      release bumps (Monero's version, checkpoints and block-hash data). RandomX was moved to
+      v1.2.3 in Opacra's vendored copy (CMake minimum and benchmark string only; salt unchanged).
+      Where upstream touched code Opacra changed, Opacra's rules were kept: the launch-time rule
+      stays in the main-chain timestamp check, a too-new block is still soft-rejected after its
+      proof of work on both the main-chain and side-chain paths (upstream moved the future
+      check into the shared function), the checkpoint refresh stays off the block-relay path,
+      block templates keep the height parameter, and one copy of the KSK-2024 root key is kept
+      (the retired KSK-2010 is removed).
+    - (node policy) DNS checkpoints follow DNS: they are a set of their own that each
+      successful read replaces, so a withdrawn or corrected record applies without a restart;
+      when nothing can be read the last set stays; a DNS set contradicting a hard-coded or JSON
+      checkpoint is ignored with a red log line instead of stopping the node
+      (`checkpoints::set_dns_points`, `Blockchain::update_checkpoints`).
+    - (wallet and RPC) development fund outputs are not used as decoys. `get_outs` marks each
+      output that is the last output of a coinbase from block 1 (`dev_fund`, optional in the
+      response, so older wallets and daemons are unaffected), and the wallet skips those when it
+      picks ring members; it requests twice Monero's margin of candidates to make up for them.
+      The fund's view key stays published: its spends are visible, so its outputs would be
+      known-spent decoys in other people's rings.
+    - Launch tools: seed setup has `--no-start` for staging; seeds accept 1000 incoming
+      connections (was 128); `daily-checkpoint` requires `--network` and checks the nodes; the
+      Windows launcher refuses an address file with more than one line.
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,
 units opacra/milliop/microop/nanoop/picoop, `opacra:` payment URIs, file magic
