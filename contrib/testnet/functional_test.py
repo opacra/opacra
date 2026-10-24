@@ -12,12 +12,15 @@ End-to-end functional test of an Opacra network on one machine.
   7. replays every block: recomputes difficulty (LWMA-1), the development fund payment, and reward (emission +
      fees) independently in Python and compares with the chain
 
+Stops the nodes and wallet RPCs it started on any exit (KEEP=1 leaves them running for RESUME=1) and
+refuses to start if their ports are taken.
 Writes a JSON report to $DATA/report.json.   Needs a built tree (the newest of build/release/bin and build/portable/bin, or BIN=).
 """
 import json
 import os
 import pathlib
 import re
+import socket
 import statistics as st
 import subprocess
 import sys
@@ -72,8 +75,46 @@ def rpc_port(i):
     return BASE_P2P + 10 * i + 1
 
 
+STARTED = []          # wallet RPC processes this run started; stopped on any exit (KEEP=1 leaves them)
+STARTED_NODES = False
+
+
+def port_in_use(port):
+    # something is listening (a socket only closing, in TIME_WAIT, does not count)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(2)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def require_free(ports, what):
+    # An earlier run that stopped at a failed check once left its old wallet RPCs on these ports,
+    # and the next run talked to them instead of the binaries under test.
+    busy = [p for p in ports if port_in_use(p)]
+    if busy:
+        raise SystemExit(f"port(s) {busy} already in use: a {what} from an earlier run is still running. "
+                         f"Stop it first (find it with: ss -ltnp | grep {busy[0]}), then rerun.")
+
+
+def cleanup():
+    if os.environ.get("KEEP") == "1":
+        log("KEEP=1: leaving the nodes and wallet RPCs running (attach again with RESUME=1)")
+        return
+    for p in STARTED:
+        if p.poll() is None:
+            p.terminate()
+    for p in STARTED:
+        try:
+            p.wait(timeout=120)
+        except subprocess.TimeoutExpired:
+            p.kill()
+    if STARTED_NODES:
+        localnet("stop")
+    log("stopped the nodes and wallet RPCs this run started (chain data kept in " + str(DATA) + ")")
+
+
 def start_wallet_rpc(i, daemon_idx):
     port = 32000 + i
+    require_free([port], "wallet RPC")
     wdir = DATA / f"wallets{i}"
     wdir.mkdir(parents=True, exist_ok=True)
     log_file = open(DATA / f"wallet-rpc{i}.log", "w")
@@ -82,8 +123,11 @@ def start_wallet_rpc(i, daemon_idx):
                           "--trusted-daemon", "--log-level", "0", "--non-interactive",
                           "--log-file", str(DATA / f"wallet-rpc{i}.core.log")],
                          stdout=log_file, stderr=subprocess.STDOUT)
+    STARTED.append(p)
     w = Wallet(port)
     w.wait_ready()
+    if p.poll() is not None:
+        raise SystemExit(f"wallet RPC {i} exited (code {p.returncode}); see {DATA / f'wallet-rpc{i}.log'}")
     return p, w
 
 
@@ -179,7 +223,11 @@ def main():
     log(f"version: {ver}")
     resume = os.environ.get("RESUME") == "1"   # attach to a running localnet + wallet RPCs
     if not resume:
+        global STARTED_NODES
         localnet("wipe")
+        require_free([BASE_P2P + 10 * i + k for i in range(3) for k in range(3)], "node")
+        require_free(range(32000, 32004), "wallet RPC")
+        STARTED_NODES = True
         localnet("start")
     nodes = [Daemon(rpc_port(i)) for i in range(3)]
     for n in nodes:
@@ -388,4 +436,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        cleanup()
