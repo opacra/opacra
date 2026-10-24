@@ -82,11 +82,12 @@ namespace cryptonote
     CHECK_AND_ASSERT_MES(r, false, "Failed to parse checkpoint hash string into binary representation!");
 
     // return false if adding at a height we already have AND the hash is different
-    if (m_points.count(height))
+    if (m_base_points.count(height))
     {
-      CHECK_AND_ASSERT_MES(h == m_points[height], false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
+      CHECK_AND_ASSERT_MES(h == m_base_points[height], false, "Checkpoint at given height already exists, and hash for new checkpoint was different!");
     }
-    m_points[height] = h;
+    m_base_points[height] = h;
+    rebuild_points();
     if (!difficulty_str.empty())
     {
       try
@@ -105,6 +106,36 @@ namespace cryptonote
       }
     }
     return true;
+  }
+  //---------------------------------------------------------------------------
+  void checkpoints::rebuild_points()
+  {
+    // a hard-coded or JSON checkpoint wins over a DNS one at the same height
+    m_points = m_base_points;
+    for (const auto &pt : m_dns_points)
+      m_points.emplace(pt.first, pt.second);
+  }
+  //---------------------------------------------------------------------------
+  bool checkpoints::set_dns_points(const std::map<uint64_t, crypto::hash>& points)
+  {
+    for (const auto &pt : points)
+    {
+      const auto it = m_base_points.find(pt.first);
+      if (it != m_base_points.end() && it->second != pt.second)
+      {
+        MERROR("DNS checkpoint at block " << pt.first << " (" << pt.second << ") conflicts with this node's own checkpoint ("
+            << it->second << ")");
+        return false;
+      }
+    }
+    m_dns_points = points;
+    rebuild_points();
+    return true;
+  }
+  //---------------------------------------------------------------------------
+  const std::map<uint64_t, crypto::hash>& checkpoints::get_dns_points() const
+  {
+    return m_dns_points;
   }
   //---------------------------------------------------------------------------
   bool checkpoints::is_in_checkpoint_zone(uint64_t height) const
@@ -230,7 +261,8 @@ namespace cryptonote
 
     LOG_PRINT_L1("Adding checkpoints from blockchain hashfile");
 
-    uint64_t prev_max_height = get_max_height();
+    // Opacra: compared with the permanent checkpoints only (a DNS checkpoint is not permanent)
+    uint64_t prev_max_height = m_base_points.empty() ? 0 : m_base_points.rbegin()->first;
     LOG_PRINT_L1("Hard-coded max checkpoint height is " << prev_max_height);
     t_hash_json hashes;
     if (!epee::serialization::load_t_from_json_file(hashes, json_hashfile_fullpath))

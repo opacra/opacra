@@ -1233,6 +1233,7 @@ namespace cryptonote
     uint64_t m_last_logged_dns_checkpoint;
     // Opacra: an enforcing node has already warned that no DNS checkpoint could be read
     bool m_dns_checkpoints_missing;
+    bool m_dns_checkpoints_conflict = false;
 
     HardFork *m_hardfork;
 

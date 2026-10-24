@@ -219,7 +219,7 @@ LOG_PATTERNS = [
     ("missing", re.compile(r"Enforcing DNS checkpoints, but none could be read")),
     ("readable", re.compile(r"DNS checkpoints can be read again")),
     ("enforced", re.compile(r"DNS checkpoint enforced: block (\d+) = <?([0-9a-f]{64})>?")),
-    ("conflict", re.compile(r"DNS checkpoint at block (\d+) conflicts with an existing checkpoint")),
+    ("conflict", re.compile(r"DNS checkpoint at block (\d+) .*conflicts with")),
 ]
 
 
@@ -329,8 +329,8 @@ def watchdog():
                         # a higher checkpoint was taken out of DNS; the running node still holds it
                         to_send.append((lambda h=h, old=s["dns_height"]: send(
                             "checkpoint at block %d removed from DNS" % old,
-                            "DNS now lists checkpoints only up to block %d. The node keeps enforcing "
-                            "block %d until it restarts (systemctl restart opacrad).\n\n"
+                            "DNS now lists checkpoints only up to block %d, and the node no longer "
+                            "enforces block %d (nodes from v0.2.6 follow DNS without a restart).\n\n"
                             "If you did not just remove it, check both domains at once." % (h, old),
                             priority=4, tags="pushpin")))
                     elif not first and s.get("dns_height") is not None:
@@ -342,10 +342,11 @@ def watchdog():
                     s["dns_height"] = h
             if kind == "conflict" and not first:
                 to_send.append(lambda g=groups[0]: send(
-                    "DNS checkpoint conflict, node stopping",
-                    "A DNS checkpoint at block %s disagrees with a checkpoint the node already has, so the "
-                    "node stops (and systemd restarts it in a loop). Make both domains show one consistent "
-                    "value; see docs/EMERGENCY_CHECKPOINTS.md, Correcting or removing a checkpoint." % g,
+                    "DNS checkpoint conflict, DNS ignored",
+                    "A DNS checkpoint at block %s disagrees with a checkpoint built into the node (or its "
+                    "checkpoints.json), so the node ignores the DNS checkpoints and keeps running. If you "
+                    "did not just publish this, someone may have changed the records: check both domains "
+                    "at once (docs/EMERGENCY_CHECKPOINTS.md)." % g,
                     priority=5, tags="rotating_light"))
         to_send += condition(s, "dns", bool(s.get("dns_missing")), 0, t,
             lambda: send("emergency checkpoints unreadable",

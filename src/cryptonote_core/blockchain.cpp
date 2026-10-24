@@ -5049,14 +5049,38 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
 
   if (read_dns && m_enforce_dns_checkpoints)
   {
-    // each DNS checkpoint joins the node's own list; add_checkpoint refuses one that
-    // conflicts with a hard-coded or earlier checkpoint, and the node then stops (as in Monero)
-    for (const auto &pt : dns_points.get_points())
+    // Opacra (24 Oct 2026 audit): the DNS checkpoints are a set of their own that each
+    // successful read replaces, so a record withdrawn or corrected in DNS stops being enforced
+    // at the next read (Monero kept every record it had read until a restart, and a corrected
+    // record at the same height stopped the node). A DNS set that contradicts a hard-coded or
+    // JSON checkpoint is ignored, loudly, instead of stopping the node: whoever controls the
+    // domains must not be able to shut down every enforcing node with one record. When nothing
+    // can be read, the last good set stays in force: a DNS outage must not lift an emergency
+    // checkpoint in the middle of an attack.
+    if (!dns_points.get_points().empty())
     {
-      if (!m_checkpoints.add_checkpoint(pt.first, epee::string_tools::pod_to_hex(pt.second)))
+      const std::map<uint64_t, crypto::hash> previous = m_checkpoints.get_dns_points();
+      if (!m_checkpoints.set_dns_points(dns_points.get_points()))
       {
-        MERROR("DNS checkpoint at block " << pt.first << " conflicts with an existing checkpoint");
-        return false;
+        if (!m_dns_checkpoints_conflict)
+          MCLOG_RED(el::Level::Error, "global", "DNS checkpoint conflicts with a checkpoint built into this node or in "
+            "checkpoints.json: ignoring the DNS checkpoints until they agree (the records may be wrong or tampered with; "
+            "see docs/EMERGENCY_CHECKPOINTS.md). The node keeps running.");
+        m_dns_checkpoints_conflict = true;
+      }
+      else
+      {
+        if (m_dns_checkpoints_conflict)
+          MGINFO("DNS checkpoints agree with this node's own checkpoints again");
+        m_dns_checkpoints_conflict = false;
+        for (const auto &pt : previous)
+        {
+          const auto it = dns_points.get_points().find(pt.first);
+          if (it == dns_points.get_points().end())
+            MGINFO_YELLOW("DNS checkpoint withdrawn: block " << pt.first << " = " << pt.second << " is no longer enforced");
+          else if (it->second != pt.second)
+            MGINFO_YELLOW("DNS checkpoint changed: block " << pt.first << " was " << pt.second << ", now " << it->second);
+        }
       }
     }
     if (dns_points.get_points().empty())
@@ -5076,7 +5100,7 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
         MGINFO("DNS checkpoints can be read again");
       m_dns_checkpoints_missing = false;
       // say once in the log when a new emergency checkpoint takes effect
-      if (dns_points.get_max_height() != m_last_logged_dns_checkpoint)
+      if (!m_dns_checkpoints_conflict && dns_points.get_max_height() != m_last_logged_dns_checkpoint)
       {
         m_last_logged_dns_checkpoint = dns_points.get_max_height();
         MGINFO_YELLOW("DNS checkpoint enforced: block " << m_last_logged_dns_checkpoint << " = "

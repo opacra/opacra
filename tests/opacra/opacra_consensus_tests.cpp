@@ -470,6 +470,53 @@ static void test_checkpoints()
   EXPECT(coin_network::dns_checkpoint_refresh_seconds <= 600);
 }
 
+// 24 Oct 2026 audit: DNS checkpoints are a separate set that each read replaces; a record
+// withdrawn or corrected in DNS stops being enforced without a restart, and a DNS set that
+// contradicts a hard-coded checkpoint is refused whole, changing nothing.
+static void test_dns_checkpoint_set()
+{
+  auto hx = [](unsigned char b) { crypto::hash h; std::memset(h.data, b, sizeof(h.data)); return h; };
+  const crypto::hash G = hx(0x01), X = hx(0x22), Y = hx(0x33), Z = hx(0x44);
+  cryptonote::checkpoints cp;
+  EXPECT(cp.add_checkpoint(0, epee::string_tools::pod_to_hex(G)));              // hard-coded genesis
+  // testnet 2's stale record: block 2000 = X
+  EXPECT(cp.set_dns_points({{0, G}, {2000, X}}));
+  EXPECT_EQ(cp.get_max_height(), (uint64_t)2000);
+  EXPECT(!cp.check_block(2000, Y));                                             // enforced
+  EXPECT(cp.is_in_checkpoint_zone(1500));
+  // DNS now lists only the genesis: block 2000 is no longer a checkpoint
+  EXPECT(cp.set_dns_points({{0, G}}));
+  EXPECT_EQ(cp.get_max_height(), (uint64_t)0);
+  bool is_cp = true;
+  EXPECT(cp.check_block(2000, Y, is_cp));
+  EXPECT(!is_cp);
+  EXPECT(!cp.is_in_checkpoint_zone(1500));
+  // a corrected record at the same height replaces the old one (Monero: the node stopped)
+  EXPECT(cp.set_dns_points({{0, G}, {2000, X}}));
+  EXPECT(cp.set_dns_points({{0, G}, {2000, Y}}));
+  EXPECT(cp.check_block(2000, Y));
+  EXPECT(!cp.check_block(2000, X));
+  // a DNS set contradicting a hard-coded checkpoint is refused whole; the previous set stays
+  EXPECT(!cp.set_dns_points({{0, Z}, {3000, X}}));
+  EXPECT(cp.check_block(0, G));
+  EXPECT(cp.check_block(2000, Y));
+  EXPECT_EQ(cp.get_max_height(), (uint64_t)2000);
+  EXPECT_EQ(cp.get_dns_points().size(), (size_t)2);
+  // a permanent checkpoint added later wins over a DNS one at the same height
+  EXPECT(cp.add_checkpoint(2000, epee::string_tools::pod_to_hex(Z)));
+  EXPECT(cp.check_block(2000, Z));
+  EXPECT(!cp.check_block(2000, Y));
+  // and a later DNS set that disagrees with it is refused
+  EXPECT(!cp.set_dns_points({{2000, Y}}));
+  EXPECT(cp.set_dns_points({{2000, Z}, {4000, X}}));
+  EXPECT_EQ(cp.get_max_height(), (uint64_t)4000);
+  // an empty set clears the DNS checkpoints (the node only calls it with what it read)
+  EXPECT(cp.set_dns_points({}));
+  EXPECT_EQ(cp.get_max_height(), (uint64_t)2000);
+  // permanent checkpoints still refuse a conflicting permanent one
+  EXPECT(!cp.add_checkpoint(0, epee::string_tools::pod_to_hex(X)));
+}
+
 int main()
 {
   test_emission();
@@ -480,6 +527,7 @@ int main()
   test_hardforks_and_identity();
   test_randomx_variant();
   test_checkpoints();
+  test_dns_checkpoint_set();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

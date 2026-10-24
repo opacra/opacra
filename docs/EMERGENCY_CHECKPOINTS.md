@@ -151,22 +151,29 @@ enforcing nodes would stall on a block that never comes.
 
 ## Correcting or removing a checkpoint
 
-Enforcing nodes keep every DNS checkpoint they have read until they restart, so:
+From v0.2.6 an enforcing node follows DNS as it is at each read (every 5 minutes): the DNS
+checkpoints are a set of their own that each successful read replaces (24 Oct 2026 audit).
 
-- **To remove one**, delete the record from both domains, then restart the enforcing
-  nodes (seed: `systemctl restart opacrad-mainnet`; testnet: `opacrad`). Until they restart they keep enforcing it.
-  The seed's phone alert says "checkpoint at block H removed from DNS" when this happens.
-  (Drill on 15 Oct 2026, v0.2.4: block 13900 published on both domains, enforced within 5
-  minutes, removed, seed restarted; every step alerted.)
-- **Never change the hash of a published height in place.** Enforcing nodes treat the new
-  hash as a conflict and shut down (and restart in a loop under systemd) until both domains
-  show one consistent value. To correct a wrong checkpoint, remove it from both domains,
-  restart the enforcing nodes, then publish the right block at a different height.
+- **To remove one**, delete the record from both domains. Within about 5 minutes the nodes
+  log `DNS checkpoint withdrawn: block H … is no longer enforced`, and the seed's phone alert
+  says "checkpoint at block H removed from DNS". No restart is needed. Keep at least the
+  standing record: if **no** record can be read, nodes keep the last set they read (a DNS
+  outage must not lift a checkpoint during an attack), so an empty zone does not withdraw
+  anything until the nodes restart.
+- **To correct one**, change its value on both domains. Nodes log `DNS checkpoint changed:
+  block H was …, now …` and enforce the new hash. (Before v0.2.6 this shut nodes down: run
+  only v0.2.6 or later on seeds.)
+- **A DNS record that contradicts a checkpoint built into the node** (or its
+  checkpoints.json) makes the node ignore all DNS checkpoints and keep running, with a red
+  log line and the phone alert "DNS checkpoint conflict, DNS ignored". If you did not just
+  publish it, someone may have changed the records: check the registrar account at once.
 - While you edit, the two domains differ for a minute or two. Nodes log "no majority of DNS
   TXT records matched" and ignore both until they agree again; that is expected.
 - An enforcing node that cannot read any checkpoint (DNS blocked, DNSSEC not validated,
   records missing) logs a red warning once, and "DNS checkpoints can be read again" when it
   recovers. Check for that warning after every seed install.
+- Nodes older than v0.2.6 keep every record they ever read until they restart, and stop on a
+  corrected record. Upgrade seeds, pools and exchanges before relying on corrections.
 
 ## Rules
 

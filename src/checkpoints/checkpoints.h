@@ -145,6 +145,25 @@ namespace cryptonote
     const std::map<uint64_t, crypto::hash>& get_points() const;
 
     /**
+     * @brief replaces the DNS checkpoints (Opacra, 24 Oct 2026 audit)
+     *
+     * Hard-coded and JSON checkpoints (add_checkpoint) are permanent; DNS checkpoints are a
+     * separate set that each successful DNS read replaces, so a record withdrawn or corrected
+     * in DNS stops being enforced without a restart. get_points() and every check use both.
+     *
+     * @param points the checkpoints just read from DNS
+     *
+     * @return false, changing nothing, if a DNS point names a different hash at a height that
+     *         has a hard-coded or JSON checkpoint
+     */
+    bool set_dns_points(const std::map<uint64_t, crypto::hash>& points);
+
+    /**
+     * @brief gets the DNS checkpoints currently in force
+     */
+    const std::map<uint64_t, crypto::hash>& get_dns_points() const;
+
+    /**
      * @brief gets the difficulty checkpoints container
      *
      * @return a const reference to the difficulty checkpoints container
@@ -204,7 +223,11 @@ namespace cryptonote
     bool load_checkpoints_from_dns(network_type nettype = MAINNET);
 
   private:
-    std::map<uint64_t, crypto::hash> m_points; //!< the checkpoints container
+    void rebuild_points();
+
+    std::map<uint64_t, crypto::hash> m_points; //!< every checkpoint in force: m_base_points plus m_dns_points
+    std::map<uint64_t, crypto::hash> m_base_points; //!< hard-coded and JSON checkpoints (permanent)
+    std::map<uint64_t, crypto::hash> m_dns_points; //!< DNS checkpoints (replaced on each successful read)
     std::map<uint64_t, difficulty_type> m_difficulty_points; //!< the difficulty checkpoints container
   };
 
