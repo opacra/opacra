@@ -1486,6 +1486,34 @@ namespace cryptonote
     bool rollback_blockchain_switching(std::list<block>& original_chain, uint64_t rollback_height);
 
     /**
+     * @brief Opacra: rolls back for a checkpoint, keeping the removed blocks as a side chain
+     *
+     * A node whose chain fails a checkpoint rolls back below it. The blocks it removes are
+     * stored as alternative blocks instead of being thrown away, so that if the checkpoint
+     * was wrong and is withdrawn, switch_to_kept_chain() can return to them with nothing lost.
+     *
+     * @param rollback_height the height to revert to (never below 1)
+     */
+    void rollback_keeping_blocks(uint64_t rollback_height);
+
+    /**
+     * @brief Opacra: after the checkpoints change, switches to a stored side chain that is
+     * heavier than the main chain and passes every checkpoint now in force
+     *
+     * @return true if the node switched
+     */
+    bool switch_to_kept_chain();
+
+  public:
+    /**
+     * @brief Opacra: at startup, drops stored side blocks as Monero does, except those of a side
+     * chain heavier than the main chain (the blocks a checkpoint removed), so that a node
+     * restarted while a wrong checkpoint stands can still return to them
+     */
+    void drop_alt_blocks_keeping_heavier();
+  private:
+
+    /**
      * @brief gets recent block weights for median calculation
      *
      * get the block weights of the last <count> blocks, and return by reference <weights>.

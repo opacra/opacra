@@ -37,6 +37,8 @@
 #include "serialization/keyvalue_serialization.h"
 #include <boost/system/error_code.hpp>
 #include <boost/filesystem.hpp>
+#include <cstdlib>
+#include <fstream>
 #include <functional>
 #include <vector>
 
@@ -287,10 +289,41 @@ namespace cryptonote
     return true;
   }
 
+  std::string test_dns_records_file(network_type nettype)
+  {
+    if (nettype == MAINNET)
+      return "";
+    const char *f = std::getenv("OPACRA_TEST_DNS_CHECKPOINTS");
+    return f ? std::string(f) : std::string();
+  }
+
   bool checkpoints::load_checkpoints_from_dns(network_type nettype)
   {
     std::vector<std::string> records;
 
+    const std::string test_file = test_dns_records_file(nettype);
+    if (!test_file.empty())
+    {
+      // tests only (never mainnet): the file's lines stand in for the agreed DNS records; a
+      // missing or empty file is the same as DNS being unreadable
+      static bool logged = false;
+      if (!logged)
+        MCLOG_RED(el::Level::Warning, "global", "TEST MODE: reading DNS checkpoint records from " << test_file << " instead of DNS");
+      logged = true;
+      std::ifstream in(test_file);
+      std::string line;
+      while (std::getline(in, line))
+      {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
+          line.pop_back();
+        if (!line.empty())
+          records.push_back(line);
+      }
+      if (records.empty())
+        return true;
+    }
+    else
+    {
     // Opacra: DNS checkpoint domains are configured in coin_network.h
     const std::vector<std::string> dns_urls = coin_network::checkpoint_dns_domains(nettype);
     if (dns_urls.empty())
@@ -298,6 +331,7 @@ namespace cryptonote
 
     if (!tools::dns_utils::load_txt_records_from_dns(records, dns_urls))
       return true; // why true ?
+    }
 
     for (const auto& record : records)
     {

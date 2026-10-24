@@ -280,7 +280,9 @@ namespace cryptonote
     if (m_checkpoints_updating.test_and_set()) return true;
 
     bool res = true;
-    if (!skip_dns && time(NULL) - m_last_dns_checkpoints_update >= coin_network::dns_checkpoint_refresh_seconds)
+    // the test hook (never mainnet) re-reads its file every 5 seconds instead of every 5 minutes
+    const int64_t dns_refresh = test_dns_records_file(m_nettype).empty() ? coin_network::dns_checkpoint_refresh_seconds : 5;
+    if (!skip_dns && time(NULL) - m_last_dns_checkpoints_update >= dns_refresh)
     {
       m_last_dns_checkpoints_update = time(NULL);
       m_last_json_checkpoints_update = time(NULL);
@@ -753,8 +755,9 @@ namespace cryptonote
     r = m_miner.init(vm, m_nettype);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
 
+    // Opacra (24 Oct 2026 review): blocks a checkpoint removed are kept across a restart
     if (!keep_alt_blocks && !m_blockchain_storage.get_db().is_read_only())
-      m_blockchain_storage.get_db().drop_alt_blocks();
+      m_blockchain_storage.drop_alt_blocks_keeping_heavier();
 
     if (prune_blockchain)
     {

@@ -30,6 +30,7 @@
 
 #pragma once
 #include <map>
+#include <string>
 #include "misc_log_ex.h"
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
@@ -42,6 +43,13 @@
 
 namespace cryptonote
 {
+  /**
+   * @brief Opacra, tests only: the file named by OPACRA_TEST_DNS_CHECKPOINTS, read in place of
+   * the DNS checkpoint records (one "height:hash" record per line), or "" when unset. Never
+   * used on mainnet. Lets the tests publish, change and withdraw records without DNS.
+   */
+  std::string test_dns_records_file(network_type nettype);
+
   /**
    * @brief A container for blockchain checkpoints
    *

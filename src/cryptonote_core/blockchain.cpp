@@ -5014,11 +5014,13 @@ void Blockchain::check_against_checkpoints(const checkpoints& points, bool enfor
       if (enforce)
       {
         LOG_ERROR("Local blockchain failed to pass a checkpoint, rolling back!");
-        std::list<block> empty;
         // Opacra (19 Oct 2026 review): never below genesis. Monero's pt.first - 2 wrapped around for a
         // checkpoint at block 1 (nothing rolled back, the node locked out of the honest chain)
-        // and tried to pop the genesis block for one at block 2 (the node crashed)
-        rollback_blockchain_switching(empty, pt.first > 2 ? pt.first - 2 : 1);
+        // and tried to pop the genesis block for one at block 2 (the node crashed).
+        // Opacra (24 Oct 2026 review): the removed blocks are kept as a side chain. Monero threw
+        // them away, so a wrong or forged checkpoint deleted every block above it on every
+        // enforcing node, and withdrawing the record afterwards could not bring them back.
+        rollback_keeping_blocks(pt.first > 2 ? pt.first - 2 : 1);
       }
       else
       {
@@ -5028,6 +5030,215 @@ void Blockchain::check_against_checkpoints(const checkpoints& points, bool enfor
   }
   if (stop_batch)
     m_db->batch_stop();
+}
+//------------------------------------------------------------------
+void Blockchain::rollback_keeping_blocks(uint64_t rollback_height)
+{
+  LOG_PRINT_L3("Blockchain::" << __func__);
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+
+  if (rollback_height < 1)
+    rollback_height = 1;   // the genesis block can never be removed
+  if (rollback_height >= m_db->height())
+    return;
+
+  m_timestamps_and_difficulties_height = 0;
+  m_reset_timestamps_and_difficulties_height = true;
+
+  // read each block's totals before removing it: they are what the side chain needs
+  std::list<block_extended_info> removed;
+  while (m_db->height() > rollback_height)
+  {
+    const uint64_t h = m_db->height() - 1;
+    block_extended_info bei;
+    bei.height = h;
+    bei.block_cumulative_weight = m_db->get_block_weight(h);
+    bei.cumulative_difficulty = m_db->get_block_cumulative_difficulty(h);
+    bei.already_generated_coins = m_db->get_block_already_generated_coins(h);
+    bei.bl = pop_block_from_blockchain();   // its transactions go back to the pool
+    removed.push_front(std::move(bei));
+  }
+  CHECK_AND_ASSERT_THROW_MES(update_next_cumulative_weight_limit(), "Error updating next cumulative weight limit");
+  m_hardfork->reorganize_from_chain_height(rollback_height);
+
+  // store them directly: they were valid main-chain blocks, and handle_alternative_block
+  // would refuse the one that fails the checkpoint (and so every block after it)
+  size_t kept = 0;
+  for (const auto &bei : removed)
+  {
+    const crypto::hash id = get_block_hash(bei.bl);
+    if (m_db->get_alt_block(id, NULL, NULL))
+      continue;
+    cryptonote::alt_block_data_t data;
+    data.height = bei.height;
+    data.cumulative_weight = bei.block_cumulative_weight;
+    data.cumulative_difficulty_low = (bei.cumulative_difficulty & 0xffffffffffffffff).convert_to<uint64_t>();
+    data.cumulative_difficulty_high = ((bei.cumulative_difficulty >> 64) & 0xffffffffffffffff).convert_to<uint64_t>();
+    data.already_generated_coins = bei.already_generated_coins;
+    m_db->add_alt_block(id, data, cryptonote::block_to_blob(bei.bl));
+    ++kept;
+  }
+  MCLOG_RED(el::Level::Warning, "global", "Rolled back to height " << rollback_height << " to pass a checkpoint. The "
+    << kept << " removed block(s) are kept as a side chain: if the checkpoint is withdrawn, the node returns to them.");
+}
+//------------------------------------------------------------------
+void Blockchain::drop_alt_blocks_keeping_heavier()
+{
+  LOG_PRINT_L3("Blockchain::" << __func__);
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  const uint64_t height = m_db->height();
+  if (height == 0)
+  {
+    m_db->drop_alt_blocks();
+    return;
+  }
+  const difficulty_type main_cd = m_db->get_block_cumulative_difficulty(height - 1);
+  struct alt_info { crypto::hash prev; bool heavier; };
+  std::unordered_map<crypto::hash, alt_info> alts;
+  m_db->for_all_alt_blocks([&alts, &main_cd](const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata_ref *blob) {
+    cryptonote::block b;
+    if (!blob || !cryptonote::parse_and_validate_block_from_blob(*blob, b))
+    {
+      alts[blkid] = {crypto::null_hash, false};
+      return true;
+    }
+    difficulty_type cd = data.cumulative_difficulty_high;
+    cd = (cd << 64) + data.cumulative_difficulty_low;
+    alts[blkid] = {b.prev_id, cd > main_cd};
+    return true;
+  }, true);
+  if (alts.empty())
+    return;
+
+  // keep each heavier block and the side blocks it builds on
+  std::unordered_set<crypto::hash> keep;
+  for (const auto &a : alts)
+  {
+    if (!a.second.heavier)
+      continue;
+    crypto::hash id = a.first;
+    while (alts.count(id) && keep.insert(id).second)
+      id = alts[id].prev;
+  }
+  if (keep.empty())
+  {
+    m_db->drop_alt_blocks();
+    return;
+  }
+  db_wtxn_guard wtxn_guard(m_db);
+  size_t dropped = 0;
+  for (const auto &a : alts)
+  {
+    if (!keep.count(a.first))
+    {
+      m_db->remove_alt_block(a.first);
+      ++dropped;
+    }
+  }
+  MGINFO_YELLOW("Kept " << keep.size() << " side block(s) of a chain heavier than the main chain (removed by a checkpoint, "
+    << "restored if the checkpoint is withdrawn); dropped " << dropped << " other side block(s)");
+}
+//------------------------------------------------------------------
+bool Blockchain::switch_to_kept_chain()
+{
+  LOG_PRINT_L3("Blockchain::" << __func__);
+  CRITICAL_REGION_LOCAL(m_tx_pool);
+  CRITICAL_REGION_LOCAL1(m_blockchain_lock);
+
+  const uint64_t height = m_db->height();
+  if (height == 0)
+    return false;
+  const difficulty_type main_cd = m_db->get_block_cumulative_difficulty(height - 1);
+
+  // side blocks heavier than the main chain's tip; normally there are none, because Monero
+  // switches to a heavier valid chain as soon as it arrives. One that stays is held back by
+  // a checkpoint (or arrived while one was in force).
+  std::vector<std::pair<difficulty_type, crypto::hash>> tips;
+  m_db->for_all_alt_blocks([&tips, &main_cd](const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata_ref *) {
+    difficulty_type cd = data.cumulative_difficulty_high;
+    cd = (cd << 64) + data.cumulative_difficulty_low;
+    if (cd > main_cd)
+      tips.emplace_back(cd, blkid);
+    return true;
+  }, false);
+  if (tips.empty())
+    return false;
+  std::sort(tips.begin(), tips.end(), [](const std::pair<difficulty_type, crypto::hash> &a, const std::pair<difficulty_type, crypto::hash> &b) { return a.first > b.first; });
+
+  bool stop_batch = m_db->batch_start();
+  bool switched = false;
+  size_t tries = 0;
+  for (const auto &tip : tips)
+  {
+    if (++tries > 5)
+      break;
+    cryptonote::alt_block_data_t data;
+    cryptonote::blobdata blob;
+    if (!m_db->get_alt_block(tip.second, &data, &blob))
+      continue;   // removed by an earlier failed try
+    block_extended_info bei;
+    if (!cryptonote::parse_and_validate_block_from_blob(blob, bei.bl))
+      continue;
+    bei.height = data.height;
+    bei.block_cumulative_weight = data.cumulative_weight;
+    bei.cumulative_difficulty = tip.first;
+    bei.already_generated_coins = data.already_generated_coins;
+
+    // walk back through the stored side blocks to the main chain. Not build_alt_chain: a
+    // kept chain may start directly on the main chain's tip (the rollback removed everything
+    // above it), which an ordinary side chain never does and build_alt_chain refuses
+    std::list<block_extended_info> chain;
+    chain.push_front(std::move(bei));
+    bool linked = true;
+    while (!m_db->block_exists(chain.front().bl.prev_id))
+    {
+      block_extended_info prev;
+      if (!m_db->get_alt_block(chain.front().bl.prev_id, &data, &blob) ||
+          !cryptonote::parse_and_validate_block_from_blob(blob, prev.bl) || chain.size() > 100000)
+      {
+        linked = false;
+        break;
+      }
+      prev.height = data.height;
+      prev.block_cumulative_weight = data.cumulative_weight;
+      prev.cumulative_difficulty = data.cumulative_difficulty_high;
+      prev.cumulative_difficulty = (prev.cumulative_difficulty << 64) + data.cumulative_difficulty_low;
+      prev.already_generated_coins = data.already_generated_coins;
+      chain.push_front(std::move(prev));
+    }
+    if (!linked || chain.front().height == 0 || chain.front().height > height ||
+        m_db->get_block_hash_from_height(chain.front().height - 1) != chain.front().bl.prev_id)
+      continue;
+
+    // every block must pass the checkpoints now in force, and the chain may not split off
+    // below the newest checkpoint the main chain has passed (the rule for any side chain)
+    if (!m_checkpoints.is_alternative_block_allowed(height, chain.front().height))
+      continue;
+    bool passes = true;
+    for (const auto &b : chain)
+    {
+      if (!m_checkpoints.check_block(b.height, get_block_hash(b.bl)))
+      {
+        passes = false;
+        break;
+      }
+    }
+    if (!passes)
+      continue;
+
+    MGINFO_GREEN("Returning to a kept side chain of " << chain.size() << " block(s) from height " << chain.front().height
+      << ": the checkpoint that removed it is no longer in force and it is the heavier chain");
+    // full validation of every block; on failure the main chain is restored and the bad
+    // blocks are dropped from the side chain store
+    if (switch_to_alternative_blockchain(chain, false))
+    {
+      switched = true;
+      break;
+    }
+  }
+  if (stop_batch)
+    m_db->batch_stop();
+  return switched;
 }
 //------------------------------------------------------------------
 // returns false if any of the checkpoints loading returns false.
@@ -5136,6 +5347,10 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
   }
 
   check_against_checkpoints(m_checkpoints, true);
+
+  // Opacra (24 Oct 2026 review): a withdrawn or corrected checkpoint gives back the blocks it
+  // removed, without a restart and without mining anything new
+  switch_to_kept_chain();
 
   return true;
 }

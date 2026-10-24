@@ -220,6 +220,8 @@ LOG_PATTERNS = [
     ("readable", re.compile(r"DNS checkpoints can be read again")),
     ("enforced", re.compile(r"DNS checkpoint enforced: block (\d+) = <?([0-9a-f]{64})>?")),
     ("conflict", re.compile(r"DNS checkpoint at block (\d+) .*conflicts with")),
+    ("rollback", re.compile(r"Rolled back to height (\d+) to pass a checkpoint\. The (\d+) removed block")),
+    ("returned", re.compile(r"Returning to a kept side chain of (\d+) block\(s\) from height (\d+)")),
 ]
 
 
@@ -348,6 +350,21 @@ def watchdog():
                     "did not just publish this, someone may have changed the records: check both domains "
                     "at once (docs/EMERGENCY_CHECKPOINTS.md)." % g,
                     priority=5, tags="rotating_light"))
+            if kind == "rollback" and not first:
+                to_send.append(lambda g=groups: send(
+                    "seed rolled back to height %s for a checkpoint" % g[0],
+                    "The seed's chain failed a checkpoint, so it rolled back to height %s and kept the %s "
+                    "removed blocks as a side chain. If you published that checkpoint against an attack, "
+                    "this is expected. If not, the record may be wrong or forged: check both domains now. "
+                    "Withdrawing or correcting it (keep the genesis record) brings the blocks back within "
+                    "about 5 minutes (docs/EMERGENCY_CHECKPOINTS.md)." % (g[0], g[1]),
+                    priority=5, tags="rotating_light"))
+            if kind == "returned" and not first:
+                to_send.append(lambda g=groups: send(
+                    "seed back on its kept blocks",
+                    "The checkpoint that rolled the seed back is no longer in force, and the seed returned to "
+                    "its kept chain of %s blocks from height %s, with nothing lost." % (g[0], g[1]),
+                    priority=3, tags="white_check_mark"))
         to_send += condition(s, "dns", bool(s.get("dns_missing")), 0, t,
             lambda: send("emergency checkpoints unreadable",
                          "This seed enforces DNS checkpoints but cannot read them, so it would not follow an "

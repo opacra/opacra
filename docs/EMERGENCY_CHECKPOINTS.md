@@ -25,7 +25,10 @@ That protects against a single hijacked or mistyped zone.
 - **Seeds, exchanges and pools** run with `enforce-dns-checkpointing=1` (in
   `contrib/launch/opacra.conf`). They refuse any reorganisation at or below the newest
   checkpoint, and if their own chain disagrees they roll back to before it and follow the
-  chain that matches. This protects the places where real money moves, and stops the seeds
+  chain that matches. From v0.2.6 the blocks they remove are kept as a side chain, also
+  across a restart: if the record was wrong and is withdrawn or corrected, they return to
+  those blocks within about 5 minutes, with nothing lost (see "Correcting or removing a
+  checkpoint"). This protects the places where real money moves, and stops the seeds
   from spreading an attacker's rewrite to new nodes.
 
 Without enforcement the project can't steer the chain; with it, a few enforcing nodes
@@ -154,12 +157,23 @@ enforcing nodes would stall on a block that never comes.
 From v0.2.6 an enforcing node follows DNS as it is at each read (every 5 minutes): the DNS
 checkpoints are a set of their own that each successful read replaces (24 Oct 2026 audit).
 
-- **To remove one**, delete the record from both domains. Within about 5 minutes the nodes
+- **To remove one**, delete that record from both domains. Within about 5 minutes the nodes
   log `DNS checkpoint withdrawn: block H … is no longer enforced`, and the seed's phone alert
-  says "checkpoint at block H removed from DNS". No restart is needed. Keep at least the
-  standing record: if **no** record can be read, nodes keep the last set they read (a DNS
-  outage must not lift a checkpoint during an attack), so an empty zone does not withdraw
-  anything until the nodes restart.
+  says "checkpoint at block H removed from DNS". No restart is needed. **Never delete the
+  genesis record** (`0:<genesis hash>`), and never empty the zone: if **no** record can be
+  read, nodes keep the last set they read (a DNS outage must not lift a checkpoint during an
+  attack), so an empty zone withdraws nothing, and a wrong record would stay in force.
+- **A wrong record costs no blocks** (from v0.2.6). An enforcing node whose chain fails it
+  rolls back below it, as before, but keeps the removed blocks as a side chain, and logs
+  `Rolled back to height … The N removed block(s) are kept as a side chain`. Once the record
+  is withdrawn or corrected, the node logs `Returning to a kept side chain of N block(s)` and
+  is back on the same tip within about 5 minutes, with its payments confirmed at the same
+  heights, without a restart and without anyone mining. While a wrong record stands, enforcing
+  nodes can't add blocks at or above its height, so act within minutes: check the record
+  against two nodes and the explorer, then delete or correct it on both domains. (Rehearsed
+  with `contrib/testnet/dns_withdraw_test.py`: a forged record at block 1, a wrong daily
+  record, a corrected record, an emptied zone and a restart.) Older nodes deleted those
+  blocks for good; run v0.2.6 or later wherever checkpoints are enforced.
 - **To correct one**, change its value on both domains. Nodes log `DNS checkpoint changed:
   block H was …, now …` and enforce the new hash. (Before v0.2.6 this shut nodes down: run
   only v0.2.6 or later on seeds.)
@@ -174,6 +188,22 @@ checkpoints are a set of their own that each successful read replaces (24 Oct 20
   recovers. Check for that warning after every seed install.
 - Nodes older than v0.2.6 keep every record they ever read until they restart, and stop on a
   corrected record. Upgrade seeds, pools and exchanges before relying on corrections.
+
+## A node stuck after a split
+
+A node can end up stuck on its own side of a split: for example one that was cut off from
+honest peers and fed an attacker's blocks, or one that a checkpoint rolled back only partly
+(the checkpoint was higher than the first block after the split). A daily or emergency
+checkpoint **above** the split does not free it: the node rolls back 2 blocks below the
+checkpoint, keeps its wrong blocks below that, and waits. Two ways out:
+
+- **One node:** in its console (Windows: the node window; Linux: `/opt/opacra/opacrad
+  --rpc-bind-port 29961 pop_blocks N`, testnet port 29971), remove the blocks above the split
+  with `pop_blocks N`, where N is the node's height minus the split height. The node then
+  downloads the honest chain from its peers. Check that it has honest peers first
+  (`print_cn`); if not, add a seed with `--add-priority-node`.
+- **Many nodes:** a checkpoint on the **first honest block after the split** (checklist step 2),
+  which every enforcing node follows on its own.
 
 ## Rules
 

@@ -309,6 +309,17 @@ Network and wallet:
     - Launch tools: seed setup has `--no-start` for staging; seeds accept 1000 incoming
       connections (was 128); `daily-checkpoint` requires `--network` and checks the nodes; the
       Windows launcher refuses an address file with more than one line.
+    - (node policy) a checkpoint rollback keeps the blocks it removes. A node whose chain fails
+      a checkpoint still rolls back to 2 blocks below it (never below genesis), but stores the
+      removed blocks as a side chain (`Blockchain::rollback_keeping_blocks`) instead of
+      deleting them as Monero does. After each checkpoint read the node switches to a stored
+      side chain that is heavier than its main chain and passes every checkpoint now in force,
+      with full validation (`Blockchain::switch_to_kept_chain`). So a wrong or forged record,
+      even at block 1, costs no blocks once it is withdrawn or corrected. At startup such a
+      heavier side chain is kept, and other side blocks are dropped as before
+      (`Blockchain::drop_alt_blocks_keeping_heavier`). Test hook, never on mainnet:
+      `OPACRA_TEST_DNS_CHECKPOINTS=<file>` reads the records from a file every 5 seconds.
+      Test: `contrib/testnet/dns_withdraw_test.py`.
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,
 units opacra/milliop/microop/nanoop/picoop, `opacra:` payment URIs, file magic
