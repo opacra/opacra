@@ -257,8 +257,9 @@ Network and wallet:
     instead of 24 hours, and not scored, because after an emergency checkpoint honest nodes
     that followed an attacker relay its chain too. From the attack rehearsal
     (`docs/ATTACK_REHEARSAL.md`). The testnet launchers enforced DNS checkpoints from then
-    until 23 Oct 2026; since v0.2.5 they only warn unless `ENFORCE_CHECKPOINTS=1`, as
-    mainnet's will (only seeds, pools and exchanges enforce by default).
+    until 23 Oct 2026; v0.2.5 made them only warn unless `ENFORCE_CHECKPOINTS=1`. From v0.2.6
+    they enforce again (`ENFORCE_CHECKPOINTS=0` only warns), as mainnet's will, because a
+    checkpoint rollback no longer deletes blocks (item 28).
 26. 18 Oct 2026 (consensus): no launch slow start on any network; block 1 costs the startup
     difficulty on every network (testnet 2's exemption removed); testnet data folder
     `testnet3`; launch-day genesis procedure `contrib/coin-identity/make_genesis.py`.

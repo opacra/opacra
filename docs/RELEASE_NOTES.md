@@ -34,8 +34,13 @@ over. It runs exactly the rules planned for mainnet.
 - Wallets no longer pick development fund outputs as decoys. The fund's view key is
   public, so those outputs made poor decoys. Rings stay at 16 members.
 
-### Mining and the Windows launcher
+### Mining and the launchers
 
+- The launchers ("Start Opacra testnet" on Windows, `start-testnet.sh` on Linux) follow the
+  project's emergency checkpoints, like the seeds, so during an attack every miner leaves the
+  attacker's chain on its own. A wrong record costs no blocks (see above). To only warn
+  instead: `set ENFORCE_CHECKPOINTS=0` in the Windows start file, or
+  `ENFORCE_CHECKPOINTS=0 ./start-testnet.sh`.
 - The Windows launcher refuses a wallet address file with more than one line.
 
 ### For seed and node operators

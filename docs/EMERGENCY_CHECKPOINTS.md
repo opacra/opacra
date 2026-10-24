@@ -18,10 +18,12 @@ That protects against a single hijacked or mistyped zone.
 
 - **Nodes started by hand** read the checkpoints every 5 minutes and log a warning if their
   chain disagrees. They are not forced onto a chain by the project.
-- **Home nodes started by the launchers** only warn, like nodes started by hand (decided 23 Oct
-  2026 for mainnet; testnet 3 does the same so it rehearses mainnet). During an attack the
-  site asks miners to restart with enforcement on: `ENFORCE_CHECKPOINTS=1 ./start-testnet.sh`
-  on Linux, or `set ENFORCE_CHECKPOINTS=1` in the Windows start file (step 7).
+- **Home nodes started by the launchers** enforce them too (from v0.2.6, decided 24 Oct 2026
+  for mainnet; testnet 3 does the same so it rehearses mainnet), so during an attack every
+  miner leaves the attacker's chain on its own. This is safe because a wrong record costs no
+  blocks: enforcing nodes keep what they roll back and return to it once the record is
+  withdrawn. A miner can choose to only warn: `ENFORCE_CHECKPOINTS=0 ./start-testnet.sh` on
+  Linux, or `set ENFORCE_CHECKPOINTS=0` in the Windows start file.
 - **Seeds, exchanges and pools** run with `enforce-dns-checkpointing=1` (in
   `contrib/launch/opacra.conf`). They refuse any reorganisation at or below the newest
   checkpoint, and if their own chain disagrees they roll back to before it and follow the
@@ -144,9 +146,10 @@ enforcing nodes would stall on a block that never comes.
    `-u opacrad`) shows
    `DNS checkpoint enforced: block H = …`.
 7. **Tell those who need to know**: exchanges, pools, the website and announcement
-   channels. Give the height and hash, and ask them to wait for more confirmations. Ask home
-   miners to restart with enforcement on (`ENFORCE_CHECKPOINTS=1`, see "Who enforces"), so
-   they leave the attacker's chain too.
+   channels. Give the height and hash, and ask them to wait for more confirmations. Home
+   miners on v0.2.6 or later follow the checkpoint on their own; ask anyone who switched to
+   warn-only (`ENFORCE_CHECKPOINTS=0`) or runs an older version to restart with a current
+   launcher.
 8. **Afterwards**: build the checkpoint into the next release (`ADD_CHECKPOINT2` in
    `src/checkpoints/checkpoints.cpp`, values from `make_checkpoint.sh`). Once that release
    is widely run, remove the emergency record from both domains at the same time, keeping

@@ -6,7 +6,7 @@
 # scratch folder under Windows' TEMP for three address files: a good one, one carrying a
 # command (Te12&echo PWNED>pwned.txt), an empty one, and a two-line one whose first line is bad;
 # then the emergency-checkpoint switch
-# (off by default, on with set ENFORCE_CHECKPOINTS=1). Prints PASS/FAIL for each.
+# (on by default, off with set ENFORCE_CHECKPOINTS=0). Prints PASS/FAIL for each.
 # Needs WSL (cmd.exe on the PATH). Wine can't be used: its findstr gives wrong answers.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -20,11 +20,11 @@ awk '/^cat > "\$STAGE\/Start Opacra testnet.bat" <<.BAT.$/{f=1; next} f && /^BAT
 grep -q "NODE-ARGS" "$DIR/launcher.bat" || { echo "could not find the node line in the launcher" >&2; exit 1; }
 
 FAILS=0
-run() {  # name, address file contents, expect "start" or "refuse" [, "enforce"]
+run() {  # name, address file contents, expect "start" or "refuse" [, "warn-only"]
   cp "$DIR/launcher.bat" "$DIR/run.bat"
-  if [ "${4:-}" = enforce ]; then
-    sed -i 's/^set ENFORCE_CHECKPOINTS=\r$/set ENFORCE_CHECKPOINTS=1\r/' "$DIR/run.bat"
-    grep -q "^set ENFORCE_CHECKPOINTS=1" "$DIR/run.bat" || { echo "could not switch checkpoints on in the launcher" >&2; exit 1; }
+  if [ "${4:-}" = warn-only ]; then
+    sed -i 's/^set ENFORCE_CHECKPOINTS=1\r$/set ENFORCE_CHECKPOINTS=0\r/' "$DIR/run.bat"
+    grep -q "^set ENFORCE_CHECKPOINTS=0" "$DIR/run.bat" || { echo "could not switch checkpoints off in the launcher" >&2; exit 1; }
   fi
   rm -f "$DIR/pwned.txt"; enforced=no
   printf '%s\r\n' "$2" > "$DIR/testnet-wallet.address.txt"
@@ -34,7 +34,7 @@ run() {  # name, address file contents, expect "start" or "refuse" [, "enforce"]
   if [ "$3" = start ]; then
     ok=$([ $started = yes ] && echo "$out" | grep -q -- "--start-mining \"$2\"" && echo yes || echo no)
     enforced=no; echo "$out" | grep -q -- "--enforce-dns-checkpointing" && enforced=yes
-    [ "$enforced" = "$([ "${4:-}" = enforce ] && echo yes || echo no)" ] || ok=no
+    [ "$enforced" = "$([ "${4:-}" = warn-only ] && echo no || echo yes)" ] || ok=no
   else
     ok=$([ $started = no ] && [ $pwned = no ] && echo yes || echo no)
   fi
@@ -45,6 +45,6 @@ run "good address" "TeGood123abcXYZ" start
 run "address with a command in it" "Te12&echo PWNED>pwned.txt" refuse
 run "empty address file" "" refuse
 run "two lines, bad first line" "$(printf 'Te12&echo PWNED>pwned.txt\r\nTeGood123abcXYZ')" refuse
-run "checkpoint switch on (=1)" "TeGood123abcXYZ" start enforce
+run "checkpoint switch off (=0)" "TeGood123abcXYZ" start warn-only
 rm -rf "$DIR"
 [ $FAILS -eq 0 ] && echo "ALL CHECKS PASSED" || { echo "$FAILS CHECK(S) FAILED"; exit 1; }
