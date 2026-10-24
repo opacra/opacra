@@ -4,7 +4,8 @@
 # Takes "Start Opacra testnet.bat" exactly as build-windows.sh writes it (with CRLF line
 # ends), swaps the node for an echo so nothing is started, and runs it with cmd.exe in a
 # scratch folder under Windows' TEMP for three address files: a good one, one carrying a
-# command (Te12&echo PWNED>pwned.txt), and an empty one; then the emergency-checkpoint switch
+# command (Te12&echo PWNED>pwned.txt), an empty one, and a two-line one whose first line is bad;
+# then the emergency-checkpoint switch
 # (off by default, on with set ENFORCE_CHECKPOINTS=1). Prints PASS/FAIL for each.
 # Needs WSL (cmd.exe on the PATH). Wine can't be used: its findstr gives wrong answers.
 set -euo pipefail
@@ -43,6 +44,7 @@ run() {  # name, address file contents, expect "start" or "refuse" [, "enforce"]
 run "good address" "TeGood123abcXYZ" start
 run "address with a command in it" "Te12&echo PWNED>pwned.txt" refuse
 run "empty address file" "" refuse
+run "two lines, bad first line" "$(printf 'Te12&echo PWNED>pwned.txt\r\nTeGood123abcXYZ')" refuse
 run "checkpoint switch on (=1)" "TeGood123abcXYZ" start enforce
 rm -rf "$DIR"
 [ $FAILS -eq 0 ] && echo "ALL CHECKS PASSED" || { echo "$FAILS CHECK(S) FAILED"; exit 1; }

@@ -11,7 +11,12 @@
 # One server can run several networks: run this once per network. Testnet is the service
 # "opacrad"; mainnet is "opacrad-mainnet", with its own config, data folder, log and alerts
 # (instance-names.sh).
+# --no-start (anywhere in the arguments): install and configure, but leave the node and its
+# alerts stopped. For launch-day staging, when nothing may run before the launch minute.
 set -euo pipefail
+NO_START=0; ARGS=()
+for arg in "$@"; do if [ "$arg" = --no-start ]; then NO_START=1; else ARGS+=("$arg"); fi; done
+set -- "${ARGS[@]}"
 TARBALL=${1:?usage: seed-node-setup.sh <opacra release tarball> [mainnet|testnet|stagenet]}
 NETWORK=${2:-mainnet}
 ALERT_TOPIC=${3:-}
@@ -74,7 +79,12 @@ if [ ! -e "$NODECONF" ]; then
     printf '\n# network\n%s\n' "$NETFLAG" >> "$NODECONF"
   fi
 else
-  echo "$NODECONF already exists; leaving it unchanged" >&2
+  echo "$NODECONF already exists; keeping your settings" >&2
+  # one setting is raised on existing seeds too: the old default of 128 incoming connections
+  if grep -q "^in-peers=128$" "$NODECONF"; then
+    sed -i "s/^in-peers=128$/in-peers=1000/" "$NODECONF"
+    echo "Raised in-peers from 128 to 1000 in $NODECONF" >&2
+  fi
 fi
 chown -R opacra:opacra /var/lib/opacra
 # the service: the shipped unit, pointed at this network's config; the alert script it calls
@@ -91,8 +101,12 @@ fi
 systemctl daemon-reload
 systemctl enable "$SERVICE"
 # restart (not just start) so that re-running this script with a new package upgrades the node
-systemctl restart "$SERVICE"
-sleep 5
+if [ "$NO_START" = 1 ]; then
+  systemctl stop "$SERVICE" 2>/dev/null || true
+else
+  systemctl restart "$SERVICE"
+  sleep 5
+fi
 
 # Firewall: only add the rule. Enabling ufw here could cut off other services on a
 # shared server (websites, databases), so that is left to the administrator.
@@ -102,14 +116,19 @@ else
   echo "ufw is not active. If this server has a firewall, open TCP $P2P for Opacra P2P." >&2
 fi
 
-sleep 5
-/opt/opacra/opacrad --rpc-bind-port "$RPC" status || true
-echo "Opacra $NETWORK seed node running as $SERVICE. Logs: journalctl -u $SERVICE -f  |  $LOGFILE"
+if [ "$NO_START" = 1 ]; then
+  echo "Opacra $NETWORK seed node installed as $SERVICE, NOT started (--no-start)."
+  echo "Start it at the launch minute:  systemctl start $SERVICE $ALERTUNIT.timer"
+else
+  sleep 5
+  /opt/opacra/opacrad --rpc-bind-port "$RPC" status || true
+  echo "Opacra $NETWORK seed node running as $SERVICE. Logs: journalctl -u $SERVICE -f  |  $LOGFILE"
+fi
 for other in $(systemctl list-units --type=service --all --no-legend 'opacrad*' 2>/dev/null | awk '{print $1}' | sed 's/\.service$//'); do
   [ "$other" = "$SERVICE" ] || echo "Also on this server: $other. It runs the previous programs until: systemctl restart $other" >&2
 done
 if [ -f install-alerts.sh ]; then
-  OPACRA_ALERT_TOPIC="${OPACRA_ALERT_TOPIC:-}" bash install-alerts.sh "$NETWORK" ${ALERT_TOPIC:+"$ALERT_TOPIC"}
+  OPACRA_NO_START="$NO_START" OPACRA_ALERT_TOPIC="${OPACRA_ALERT_TOPIC:-}" bash install-alerts.sh "$NETWORK" ${ALERT_TOPIC:+"$ALERT_TOPIC"}
 else
   echo "Phone alerts are not set up: copy install-alerts.sh and its files here and run it (docs/ALERTS.md)." >&2
 fi

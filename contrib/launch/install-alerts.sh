@@ -42,7 +42,9 @@ install -d -o opacra -g opacra -m 750 "$STATEDIR"
 CONF="$ALERTCONF"
 if [ ! -e "$CONF" ]; then
   # another network on this server already has alerts: reuse its topic, one feed on the phone
-  [ -n "$TOPIC" ] || TOPIC=$(sed -n 's/^NTFY_TOPIC=//p' /etc/opacra/alert*.conf 2>/dev/null | head -1)
+  # (|| true: on a server with no alerts yet the pattern matches nothing and sed fails, which
+  # under set -e -o pipefail ended the script silently; found by the 24 Oct staging test)
+  [ -n "$TOPIC" ] || TOPIC=$(sed -n 's/^NTFY_TOPIC=//p' /etc/opacra/alert*.conf 2>/dev/null | head -1 || true)
   [ -n "$TOPIC" ] || TOPIC="opacra-$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   cat > "$CONF" <<EOF
 # Opacra seed alerts (read by /usr/local/bin/opacra-alert). Anyone who knows the topic can
@@ -87,10 +89,16 @@ if [ -n "$SUFFIX" ]; then
   chmod 755 "/usr/local/bin/$ALERTUNIT"
 fi
 systemctl daemon-reload
-systemctl enable --now "$ALERTUNIT.timer" >/dev/null
-systemctl restart "$SERVICE"
-sleep 8
-systemctl is-active --quiet "$SERVICE" || { echo "$SERVICE did not restart: journalctl -u $SERVICE -n 30" >&2; exit 1; }
+if [ "${OPACRA_NO_START:-0}" = 1 ]; then
+  # staging (seed-node-setup.sh --no-start): enabled for boot, but nothing runs until started
+  systemctl enable "$ALERTUNIT.timer" >/dev/null
+  systemctl stop "$ALERTUNIT.timer" 2>/dev/null || true
+else
+  systemctl enable --now "$ALERTUNIT.timer" >/dev/null
+  systemctl restart "$SERVICE"
+  sleep 8
+  systemctl is-active --quiet "$SERVICE" || { echo "$SERVICE did not restart: journalctl -u $SERVICE -n 30" >&2; exit 1; }
+fi
 
 TOPIC=$(sed -n 's/^NTFY_TOPIC=//p' "$CONF")
 echo

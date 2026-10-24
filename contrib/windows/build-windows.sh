@@ -67,6 +67,10 @@ pause >nul
 :start
 rem The address file is checked before every use (it may have been copied from an older
 rem folder): only letters and digits, so nothing in it can run as a command.
+rem Exactly one line: findstr passes if any line matches, while set /p reads the first one.
+set "LINES=0"
+for /f "usebackq delims=" %%L in ("testnet-wallet.address.txt") do set /a LINES+=1 >nul
+if not "!LINES!"=="1" goto badaddress
 findstr /r /x "T[0-9A-Za-z]*" testnet-wallet.address.txt >nul || goto badaddress
 set "ADDR="
 set /p "ADDR=" < testnet-wallet.address.txt

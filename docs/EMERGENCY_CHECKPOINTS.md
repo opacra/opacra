@@ -81,16 +81,16 @@ One routine checkpoint a day caps how much history an attack could quietly rewri
 network is small. About 5 minutes, from the PC (Opacra Ubuntu tab):
 
 ```
-cd ~/opacra && contrib/launch/daily-checkpoint --mainnet --node local:127.0.0.1:29961 --node ssh:opacra-seed1:127.0.0.1:29961
+cd ~/opacra && contrib/launch/daily-checkpoint --network mainnet --node ssh:opacra-seed1:127.0.0.1:29961 --node ssh:opacra-seed2:127.0.0.1:29961
 ```
 
-It picks a block about 6 hours deep, reads its hash from both nodes and refuses if they
-disagree or are more than 10 blocks apart. It prints the record, the two `dig` checks and a line
+It checks both nodes are on the network named, picks a block about 6 hours deep, reads its hash
+from both nodes and refuses if they disagree or are more than 10 blocks apart. It prints the record, the two `dig` checks and a line
 for the website's checkpoint log. Then follow steps 4-6 of the emergency checklist below:
 both domains, TTL 1 min, check with dig, and confirm the seed says `DNS checkpoint enforced`.
 Keep the earlier daily records; remove them all at once after a release hard-codes them. Stop
 the daily routine at that point (white paper: "Protecting a young chain"). Rehearse it on the
-testnet first (`--node local:127.0.0.1:29971 --node ssh:opacra-seed1:127.0.0.1:29971`, no `--mainnet`).
+testnet first (`--network testnet --node ssh:opacra-seed1:127.0.0.1:29971 --node ssh:opacra-seed2:127.0.0.1:29971`).
 
 ## Emergency checklist
 

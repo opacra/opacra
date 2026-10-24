@@ -6,8 +6,13 @@ quietly rewrite (road-to-mainnet plan, 17 Oct 2026). This script does the part t
 wrong: it picks a block about 6 hours deep, reads its hash from two independent nodes, refuses
 if they disagree, and prints the exact TXT record to paste into both domains.
 
-  daily-checkpoint --node local:127.0.0.1:29971 --node ssh:opacra-seed1:127.0.0.1:29971
-  daily-checkpoint --mainnet --node local:127.0.0.1:29961 --node ssh:opacra-seed1:127.0.0.1:29961
+  daily-checkpoint --network testnet --node local:127.0.0.1:29971 --node ssh:opacra-seed1:127.0.0.1:29971
+  daily-checkpoint --network mainnet --node ssh:opacra-seed1:127.0.0.1:29961 --node ssh:opacra-seed2:127.0.0.1:29961
+
+--network is required: the tool refuses unless every node answers that it is on that network,
+and the record name follows from it (mainnet: checkpoints, testnet: testpoints). Both networks
+run on the same seeds (RPC 29961 and 29971), so a wrong port must not print a record for the
+other network: pasted, it would stall every enforcing node of that network.
 
 A node is  local:HOST:PORT  (its RPC reachable from here) or  ssh:SSH_HOST:HOST:PORT  (the RPC on
 that server, read with curl over ssh). Options: --depth BLOCKS (default 720, 6 hours at 30 s).
@@ -55,7 +60,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--node", action="append", required=True, help="local:HOST:PORT or ssh:SSH_HOST:HOST:PORT (give two)")
     ap.add_argument("--depth", type=int, default=720)
-    ap.add_argument("--mainnet", action="store_true", help="mainnet record name (checkpoints) instead of testnet (testpoints)")
+    ap.add_argument("--network", required=True, choices=["mainnet", "testnet"])
     a = ap.parse_args()
     if len(a.node) < 2:
         sys.exit("Give two independent nodes (--node ... --node ...): one node alone could be on a wrong chain.")
@@ -66,6 +71,11 @@ def main():
             infos.append(rpc(n, "get_info", {}))
         except Exception as e:  # noqa: BLE001
             sys.exit("Cannot read %s: %s" % (n, e))
+    for n, i in zip(a.node, infos):
+        nettype = i.get("nettype") or ("testnet" if i.get("testnet") else "stagenet" if i.get("stagenet") else "mainnet")
+        if nettype != a.network:
+            sys.exit("%s is on %s, not %s: stopping. Check --network and the port (mainnet 29961, testnet 29971)."
+                     % (n, nettype, a.network))
     heights = [i["height"] for i in infos]
     for n, i in zip(a.node, infos):
         if not i.get("synchronized", True) or i.get("busy_syncing"):
@@ -90,9 +100,10 @@ def main():
         sys.exit(1)
 
     age_h = (time.time() - headers[0]["timestamp"]) / 3600
-    name = "checkpoints" if a.mainnet else "testpoints"
+    name = "checkpoints" if a.network == "mainnet" else "testpoints"
     record = "%d:%s" % (h, hashes[0])
-    print("Both nodes agree on block %d (mined about %.1f hours ago; tips at %s)." % (h, age_h, ", ".join(map(str, heights))))
+    print("Network: %s. Both nodes agree on block %d (mined about %.1f hours ago; tips at %s)."
+          % (a.network.upper(), h, age_h, ", ".join(map(str, heights))))
     print()
     print("Add this TXT record to BOTH opacra.org and opacra.com (Host: %s, TTL: 1 min):" % name)
     print()
