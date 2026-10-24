@@ -14,7 +14,7 @@
      output: blocks that short the fund, change its output key or view tag, or drop it
      are refused, and get_block_template reports the miner's share.
 
-Usage:  BIN=build/portable/bin python3 contrib/testnet/block_rules_test.py
+Usage:  python3 contrib/testnet/block_rules_test.py   (BIN=... to choose a build; default: the newest)
 Needs gcc (builds the clock-offset shim for test 4). Ports 33000-33100 on 127.0.0.1.
 Exit code 0 when every check passes. Writes $DATA/block_rules_report.json.
 """
@@ -33,7 +33,17 @@ sys.path.insert(0, str(HERE.parent / "coin-identity"))
 from rpc import Daemon, RPCError, _post  # noqa: E402
 import coinid  # noqa: E402
 
-BIN = pathlib.Path(os.environ.get("BIN", HERE.parent.parent / "build" / "release" / "bin"))
+def _default_bin():
+    # the newest opacrad among the usual build folders, so an old build is never tested by mistake
+    found = [d for d in (HERE.parent.parent / "build" / n / "bin" for n in ("release", "portable"))
+             if (d / "opacrad").exists()]
+    return max(found, key=lambda d: (d / "opacrad").stat().st_mtime) if found else \
+        HERE.parent.parent / "build" / "release" / "bin"
+
+
+BIN = pathlib.Path(os.environ.get("BIN") or _default_bin())
+print("binaries:", BIN, "|", subprocess.run([str(BIN / "opacrad"), "--version"], capture_output=True,
+                                             text=True).stdout.strip(), flush=True)
 DATA = pathlib.Path(os.environ.get("DATA", tempfile.mkdtemp(prefix="opacra-rules-")))
 DATA.mkdir(parents=True, exist_ok=True)
 FTL = 180

@@ -12,7 +12,7 @@ End-to-end functional test of an Opacra network on one machine.
   7. replays every block: recomputes difficulty (LWMA-1), the development fund payment, and reward (emission +
      fees) independently in Python and compares with the chain
 
-Writes a JSON report to $DATA/report.json.   Needs a built tree (build/release/bin).
+Writes a JSON report to $DATA/report.json.   Needs a built tree (the newest of build/release/bin and build/portable/bin, or BIN=).
 """
 import json
 import os
@@ -29,7 +29,15 @@ sys.path.insert(0, str(HERE.parent / "sim"))
 from rpc import Daemon, Wallet, ATOMIC, RPCError  # noqa: E402
 import opacra_params as tp  # noqa: E402
 
-BIN = pathlib.Path(os.environ.get("BIN", HERE.parent.parent / "build" / "release" / "bin"))
+def _default_bin():
+    # the newest opacrad among the usual build folders (an old build/release once ran by mistake)
+    found = [d for d in (HERE.parent.parent / "build" / n / "bin" for n in ("release", "portable"))
+             if (d / "opacrad").exists()]
+    return max(found, key=lambda d: (d / "opacrad").stat().st_mtime) if found else \
+        HERE.parent.parent / "build" / "release" / "bin"
+
+
+BIN = pathlib.Path(os.environ.get("BIN") or _default_bin())
 DATA = pathlib.Path(os.environ.get("DATA", pathlib.Path.home() / "opacra-localnet"))
 BASE_P2P = int(os.environ.get("BASE_P2P", "31000"))
 MIN_HEIGHT_FOR_TX = int(os.environ.get("MIN_HEIGHT_FOR_TX", "110"))
@@ -167,6 +175,8 @@ def verify_chain(d):
 def main():
     DATA.mkdir(parents=True, exist_ok=True)
     log(f"binaries: {BIN}")
+    ver = subprocess.run([str(BIN / "opacrad"), "--version"], capture_output=True, text=True).stdout.strip()
+    log(f"version: {ver}")
     resume = os.environ.get("RESUME") == "1"   # attach to a running localnet + wallet RPCs
     if not resume:
         localnet("wipe")
