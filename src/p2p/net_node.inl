@@ -1506,7 +1506,11 @@ namespace nodetool
     if(it == m_conn_fails_cache.end())
       return false;
 
-    if(time(NULL) - it->second > P2P_FAILED_ADDR_FORGET_SECONDS)
+    // Opacra (25 Oct 2026 review): a failure time in the future (the clock stepped back) would
+    // keep the address, a seed for example, marked as failed for the size of the step plus the
+    // forget time; forget it instead, so the node tries it again
+    const time_t now = time(NULL);
+    if(now < it->second || now - it->second > P2P_FAILED_ADDR_FORGET_SECONDS)
       return false;
     else
       return true;

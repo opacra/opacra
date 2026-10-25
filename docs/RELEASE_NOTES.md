@@ -38,8 +38,18 @@ over. It runs exactly the rules planned for mainnet.
   restart, so a DNS outage cannot lift a checkpoint during an attack. A set that conflicts with
   a checkpoint built into the node is never saved, and a node that boots with its clock wrong
   still restores its saved records.
-- A node whose clock goes backwards no longer empties its transaction pool (a fix to
-  Monero's pool code).
+### A clock that steps backwards
+
+Ported from Monero's development branch, or found while testing it:
+
+- A node whose clock goes backwards no longer empties its transaction pool.
+- `get_transaction_pool_stats` no longer crashes the node when its clock has just stepped
+  back, for example after a time correction. Public RPC nodes serve this call, so before
+  the fix anyone could stop such a node with one request.
+- Emergency checkpoint records are still read every 5 minutes after the clock steps back.
+  Before, reads paused until the clock had caught up again.
+- A peer that failed to connect is tried again after the usual hour, even if the clock
+  stepped back in between.
 
 ### Wallet privacy
 
@@ -82,6 +92,7 @@ over. It runs exactly the rules planned for mainnet.
 
 `contrib/testnet/dns_withdraw_test.py` (wrong, withdrawn and corrected checkpoint records,
 and replayed older answers),
-`contrib/testnet/decoy_test.py` (fund outputs never used as decoys), and the Windows
+`contrib/testnet/decoy_test.py` (fund outputs never used as decoys),
+`contrib/testnet/clock_step_test.py` (a running node whose clock steps back), and the Windows
 launcher check `contrib/windows/test-launcher.sh`. The full functional test now stops what
 it started and refuses ports that are already in use.

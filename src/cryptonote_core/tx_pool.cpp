@@ -731,7 +731,8 @@ namespace cryptonote
       // Opacra (25 Oct 2026 review): with the clock behind the receive time (a node booted
       // with its clock wrong), Monero's unsigned "now - receive_time" wrapped to a huge age and
       // dropped every transaction in the pool, including those of blocks kept after a checkpoint
-      // rollback; a time in the future counts as age 0, as in get_transaction_stats below
+      // rollback; a time in the future counts as age 0, as in get_transaction_backlog below
+      // (Monero master has the same fix)
       const uint64_t now = time(nullptr);
       uint64_t tx_age = now >= meta.receive_time ? now - meta.receive_time : 0;
 
@@ -1123,13 +1124,17 @@ namespace cryptonote
       if (!meta.relayed)
         stats.num_not_relayed++;
       stats.fee_total += meta.fee;
-      if (!stats.oldest || meta.receive_time < stats.oldest)
-        stats.oldest = meta.receive_time;
-      if (meta.receive_time < now - 600)
+      // Opacra (25 Oct 2026 review), as in Monero master: after the clock steps back, a receive
+      // time in the future made the unsigned age wrap and the histogram index below run far
+      // past the end of stats.histo (a crash from one RPC call); a future time counts as now
+      const uint64_t receive_time = std::min(meta.receive_time, now);
+      if (!stats.oldest || receive_time < stats.oldest)
+        stats.oldest = receive_time;
+      if (receive_time < now - 600)
         stats.num_10m++;
       if (meta.last_failed_height)
         stats.num_failing++;
-      uint64_t age = now - meta.receive_time + (now == meta.receive_time);
+      const uint64_t age = now - receive_time + (now == receive_time);
       agebytes[age].txs++;
       agebytes[age].bytes += meta.weight;
       if (meta.double_spend_seen)
@@ -1178,6 +1183,9 @@ namespace cryptonote
       for (i2 = agebytes.begin(); i2 != it; i2++)
       {
         size_t i = (i2->first * factor - 1) / delta;
+        // Opacra: belt and braces for the fix above; never write past the last bin
+        if (i >= stats.histo.size())
+          i = stats.histo.size() - 1;
         stats.histo[i].txs += i2->second.txs;
         stats.histo[i].bytes += i2->second.bytes;
       }

@@ -282,7 +282,11 @@ namespace cryptonote
     bool res = true;
     // the test hook (never mainnet) re-reads its file every 5 seconds instead of every 5 minutes
     const int64_t dns_refresh = test_dns_records_file(m_nettype).empty() ? coin_network::dns_checkpoint_refresh_seconds : 5;
-    if (!skip_dns && time(NULL) - m_last_dns_checkpoints_update >= dns_refresh)
+    // Opacra (25 Oct 2026 review): after the clock steps back, "now - last" is negative and the
+    // refresh would pause until the clock caught up, missing any emergency record published in
+    // the meantime; a last refresh in the future counts as due
+    const time_t now = time(NULL);
+    if (!skip_dns && (now < m_last_dns_checkpoints_update || now - m_last_dns_checkpoints_update >= dns_refresh))
     {
       m_last_dns_checkpoints_update = time(NULL);
       m_last_json_checkpoints_update = time(NULL);
@@ -315,7 +319,7 @@ namespace cryptonote
       }
       res = m_blockchain_storage.update_checkpoints(m_checkpoints_path, true);
     }
-    else if (time(NULL) - m_last_json_checkpoints_update >= 600)
+    else if (now < m_last_json_checkpoints_update || now - m_last_json_checkpoints_update >= 600)
     {
       res = m_blockchain_storage.update_checkpoints(m_checkpoints_path, false);
       m_last_json_checkpoints_update = time(NULL);

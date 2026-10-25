@@ -96,6 +96,11 @@ python3 coinid.py genesis --reward 2384185791015 \
       `bash seed-node-setup.sh <package> testnet` (P2P port 29970; see section 5).
 - [ ] Invite miners and developers; run the block explorer and pool against testnet.
 - [ ] Run `contrib/testnet/functional_test.py` on the release candidate.
+- [ ] Before every release, the full test gate on one build (re-run `cmake` first, so the
+      version line each test prints names the commit under test): `opacra_consensus_tests`,
+      `dns_withdraw_test.py`, `checkpoint_rollback_test.py`, `block_rules_test.py`,
+      `decoy_test.py`, `clock_step_test.py` and `functional_test.py`, each with `--bin` set
+      to that build's `bin` folder.
 - [ ] Run `opacra-audit` on the testnet 3 seed weekly, and log each result in
       `docs/CHAIN_AUDIT.md`.
 - [x] Independent AI review of the consensus diff, October 2026 (`docs/REVIEW_2026-10.md`).
