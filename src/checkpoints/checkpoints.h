@@ -172,6 +172,16 @@ namespace cryptonote
     const std::map<uint64_t, crypto::hash>& get_dns_points() const;
 
     /**
+     * @brief Opacra: the serial number published with the DNS records read by
+     * load_checkpoints_from_dns (a "serial:N" record), or 0 if there was none
+     *
+     * Every change to the records publishes a higher serial. A node refuses a set whose serial
+     * is lower than the highest it has seen, so a stale or replayed DNS answer (still validly
+     * signed) can't lift an emergency checkpoint.
+     */
+    uint64_t get_dns_serial() const { return m_dns_serial; }
+
+    /**
      * @brief gets the difficulty checkpoints container
      *
      * @return a const reference to the difficulty checkpoints container
@@ -237,6 +247,7 @@ namespace cryptonote
     std::map<uint64_t, crypto::hash> m_base_points; //!< hard-coded and JSON checkpoints (permanent)
     std::map<uint64_t, crypto::hash> m_dns_points; //!< DNS checkpoints (replaced on each successful read)
     std::map<uint64_t, difficulty_type> m_difficulty_points; //!< the difficulty checkpoints container
+    uint64_t m_dns_serial = 0; //!< the "serial:N" record read with the DNS checkpoints, 0 if none
   };
 
 }

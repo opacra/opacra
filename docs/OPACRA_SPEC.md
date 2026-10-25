@@ -257,9 +257,10 @@ Network and wallet:
     instead of 24 hours, and not scored, because after an emergency checkpoint honest nodes
     that followed an attacker relay its chain too. From the attack rehearsal
     (`docs/ATTACK_REHEARSAL.md`). The testnet launchers enforced DNS checkpoints from then
-    until 23 Oct 2026; v0.2.5 made them only warn unless `ENFORCE_CHECKPOINTS=1`. From v0.2.6
-    they enforce again (`ENFORCE_CHECKPOINTS=0` only warns), as mainnet's will, because a
-    checkpoint rollback no longer deletes blocks (item 28).
+    until 23 Oct 2026; since v0.2.5 they only warn unless `ENFORCE_CHECKPOINTS=1`, and print
+    at startup how to switch it on. Mainnet launches the same way; enforcement becomes the
+    default in the first release after the two checkpoint domains move to separate
+    registrars (see `docs/EMERGENCY_CHECKPOINTS.md`, "Who enforces").
 26. 18 Oct 2026 (consensus): no launch slow start on any network; block 1 costs the startup
     difficulty on every network (testnet 2's exemption removed); testnet data folder
     `testnet3`; launch-day genesis procedure `contrib/coin-identity/make_genesis.py`.
@@ -321,6 +322,20 @@ Network and wallet:
       (`Blockchain::drop_alt_blocks_keeping_heavier`). Test hook, never on mainnet:
       `OPACRA_TEST_DNS_CHECKPOINTS=<file>` reads the records from a file every 5 seconds.
       Test: `contrib/testnet/dns_withdraw_test.py`.
+    - (node policy, 25 Oct 2026 review) DNS checkpoint sets carry a serial number, a
+      `serial:N` TXT record beside the `height:hash` ones (older nodes skip it). An enforcing
+      node remembers the highest serial it has seen (`dns_checkpoint_serial` in its data
+      folder, so it survives restarts) and refuses a set with a lower serial, or without one
+      once it has seen one, keeping its current checkpoints. DNSSEC proves a set was signed,
+      not that it is current, so without this a replayed older answer could lift an emergency
+      checkpoint and return the node to a chain it refused.
+    - (node policy) the kept-chain check looks only at real tips (side blocks heavier than the
+      main chain that no other side block builds on), skips a tip that failed the checkpoints
+      in force until they change, and does nothing when no side block was added and the
+      checkpoints are unchanged since the last look found nothing.
+    - (RPC) `get_outs` reads an output's transaction to set `dev_fund` only when its unlock
+      time is its height + 60 blocks, which consensus requires of every coinbase output, so
+      ordinary outputs cost no extra read.
 Branding (no behaviour change): string literals and binary names via
 `contrib/coin-identity/rebrand.py` (`opacrad`, `opacra-wallet-cli`, `opacra-wallet-rpc`,
 units opacra/milliop/microop/nanoop/picoop, `opacra:` payment URIs, file magic

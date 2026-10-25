@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <fstream>
 #include <boost/asio/dispatch.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/range/adaptor/reversed.hpp>
@@ -2487,7 +2488,11 @@ bool Blockchain::get_outs(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMA
       const tx_out_index toi = m_db->get_output_tx_and_index(req.outputs[i].amount, req.outputs[i].index);
       if (req.get_txid)
         res.outs[i].txid = toi.first;
-      if (data[i].height >= 1)
+      // Opacra (25 Oct 2026 review): read the transaction only for outputs that can be
+      // coinbase outputs. Consensus fixes every coinbase's unlock time at its height + 60
+      // blocks, which the output data already carries, so ordinary outputs cost no extra read
+      // (a public restricted RPC request may ask for 5,000 outputs).
+      if (data[i].height >= 1 && data[i].unlock_time == data[i].height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
       {
         cryptonote::transaction tx;
         if (m_db->get_pruned_tx(toi.first, tx) && tx.is_coinbase() && tx.vout.size() >= 2 && toi.second + 1 == tx.vout.size())
@@ -5150,17 +5155,43 @@ bool Blockchain::switch_to_kept_chain()
     return false;
   const difficulty_type main_cd = m_db->get_block_cumulative_difficulty(height - 1);
 
-  // side blocks heavier than the main chain's tip; normally there are none, because Monero
-  // switches to a heavier valid chain as soon as it arrives. One that stays is held back by
-  // a checkpoint (or arrived while one was in force).
-  std::vector<std::pair<difficulty_type, crypto::hash>> tips;
-  m_db->for_all_alt_blocks([&tips, &main_cd](const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata_ref *) {
+  // Opacra (25 Oct 2026 review): don't re-walk a kept chain on every refresh. A tip that failed
+  // the checkpoints in force is skipped until they change; and when the last look found nothing
+  // to try, nothing new can appear until a side block is added or the checkpoints change (the
+  // main chain only gets heavier, so the candidates only shrink).
+  const uint64_t alt_count = m_db->get_alt_block_count();
+  if (m_kept_failed_points != m_checkpoints.get_points())
+  {
+    m_kept_failed_points = m_checkpoints.get_points();
+    m_kept_failed_tips.clear();
+  }
+  else if (m_kept_nothing_to_try && alt_count == m_kept_last_alt_count)
+  {
+    return false;
+  }
+  m_kept_last_alt_count = alt_count;
+
+  // real tips of side chains heavier than the main chain: heavier side blocks that no other
+  // side block builds on. Normally there are none, because Monero switches to a heavier valid
+  // chain as soon as it arrives; one that stays was held back by a checkpoint.
+  std::unordered_map<crypto::hash, difficulty_type> heavier;
+  std::unordered_set<crypto::hash> has_child;
+  m_db->for_all_alt_blocks([&heavier, &has_child, &main_cd](const crypto::hash &blkid, const cryptonote::alt_block_data_t &data, const cryptonote::blobdata_ref *blob) {
     difficulty_type cd = data.cumulative_difficulty_high;
     cd = (cd << 64) + data.cumulative_difficulty_low;
-    if (cd > main_cd)
-      tips.emplace_back(cd, blkid);
+    if (cd <= main_cd)
+      return true;
+    heavier[blkid] = cd;
+    cryptonote::block b;
+    if (blob && cryptonote::parse_and_validate_block_from_blob(*blob, b))
+      has_child.insert(b.prev_id);
     return true;
-  }, false);
+  }, true);
+  std::vector<std::pair<difficulty_type, crypto::hash>> tips;
+  for (const auto &h : heavier)
+    if (!has_child.count(h.first) && !m_kept_failed_tips.count(h.first))
+      tips.emplace_back(h.second, h.first);
+  m_kept_nothing_to_try = tips.empty();
   if (tips.empty())
     return false;
   std::sort(tips.begin(), tips.end(), [](const std::pair<difficulty_type, crypto::hash> &a, const std::pair<difficulty_type, crypto::hash> &b) { return a.first > b.first; });
@@ -5172,6 +5203,10 @@ bool Blockchain::switch_to_kept_chain()
   {
     if (++tries > 5)
       break;
+    // a tip that can't be used under these checkpoints is remembered; it is tried again only
+    // when the checkpoints change (and dropped from the store at the next restart once the
+    // main chain is heavier, by drop_alt_blocks_keeping_heavier)
+    m_kept_failed_tips.insert(tip.second);
     cryptonote::alt_block_data_t data;
     cryptonote::blobdata blob;
     if (!m_db->get_alt_block(tip.second, &data, &blob))
@@ -5233,11 +5268,16 @@ bool Blockchain::switch_to_kept_chain()
     if (switch_to_alternative_blockchain(chain, false))
     {
       switched = true;
+      m_kept_failed_tips.erase(tip.second);
       break;
     }
   }
   if (stop_batch)
     m_db->batch_stop();
+  // every candidate was tried and failed: nothing to do until a side block is added or the
+  // checkpoints change
+  if (!switched && tries <= 5 && tries >= tips.size())
+    m_kept_nothing_to_try = true;
   return switched;
 }
 //------------------------------------------------------------------
@@ -5277,7 +5317,54 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
     // domains must not be able to shut down every enforcing node with one record. When nothing
     // can be read, the last good set stays in force: a DNS outage must not lift an emergency
     // checkpoint in the middle of an attack.
+    // Opacra (25 Oct 2026 review): DNSSEC proves an answer was signed, not that it is current,
+    // and an old signed answer stays valid for days. Every change to the records therefore
+    // publishes a higher "serial:N" record, and a set older than the newest one seen is
+    // refused: a replayed pre-emergency answer can't lift an emergency checkpoint and move the
+    // node back to a chain it refused. The newest serial survives restarts.
+    bool stale_set = false;
     if (!dns_points.get_points().empty())
+    {
+      const std::string serial_file = file_path.empty() ? std::string() :
+        (boost::filesystem::path(file_path).parent_path() / "dns_checkpoint_serial").string();
+      if (!m_dns_serial_loaded)
+      {
+        m_dns_serial_loaded = true;
+        if (!serial_file.empty())
+        {
+          std::ifstream in(serial_file);
+          uint64_t saved = 0;
+          if (in >> saved)
+            m_dns_serial_seen = saved;
+        }
+      }
+      const uint64_t serial = dns_points.get_dns_serial();
+      if (serial < m_dns_serial_seen)
+      {
+        stale_set = true;
+        if (m_dns_serial_refused_logged != serial + 1)
+          MCLOG_RED(el::Level::Error, "global", "DNS checkpoint records are older than records already seen (serial " << serial
+            << ", newest seen " << m_dns_serial_seen << "): ignoring them and keeping the current checkpoints. This is a stale "
+            "or replayed DNS answer, or the records were published without a higher serial (see docs/EMERGENCY_CHECKPOINTS.md).");
+        m_dns_serial_refused_logged = serial + 1;
+      }
+      else if (serial > m_dns_serial_seen)
+      {
+        m_dns_serial_seen = serial;
+        m_dns_serial_refused_logged = 0;
+        if (!serial_file.empty())
+        {
+          const std::string tmp = serial_file + ".tmp";
+          {
+            std::ofstream out(tmp, std::ios::trunc);
+            out << serial << "\n";
+          }
+          if (std::rename(tmp.c_str(), serial_file.c_str()) != 0)
+            MERROR("Could not save the DNS checkpoint serial to " << serial_file);
+        }
+      }
+    }
+    if (!dns_points.get_points().empty() && !stale_set)
     {
       const std::map<uint64_t, crypto::hash> previous = m_checkpoints.get_dns_points();
       if (!m_checkpoints.set_dns_points(dns_points.get_points()))
@@ -5320,7 +5407,7 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
         MGINFO("DNS checkpoints can be read again");
       m_dns_checkpoints_missing = false;
       // say once in the log when a new emergency checkpoint takes effect
-      if (!m_dns_checkpoints_conflict && dns_points.get_max_height() != m_last_logged_dns_checkpoint)
+      if (!stale_set && !m_dns_checkpoints_conflict && dns_points.get_max_height() != m_last_logged_dns_checkpoint)
       {
         m_last_logged_dns_checkpoint = dns_points.get_max_height();
         MGINFO_YELLOW("DNS checkpoint enforced: block " << m_last_logged_dns_checkpoint << " = "

@@ -3,8 +3,8 @@
 # creates your wallet the first time, then runs a node that mines to it.
 #   ./start-testnet.sh            (from the unpacked release folder)
 #   MINE_THREADS=N ./start-testnet.sh          mine with N threads
-#   ENFORCE_CHECKPOINTS=0 ./start-testnet.sh   only warn about the project's emergency checkpoints
-#                                              instead of following them (the default)
+#   ENFORCE_CHECKPOINTS=1 ./start-testnet.sh   follow the project's emergency checkpoints (opacra.org
+#                                              asks for it during an attack; the default only warns)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -43,14 +43,15 @@ echo " node has caught up, usually within a few minutes. Type  status  to check.
 echo " your coins, open a second terminal in this folder and run  ./open-wallet.sh"
 echo " To mine with N threads instead:  MINE_THREADS=N ./start-testnet.sh"
 echo
-# Emergency checkpoints (DNSSEC-signed, both domains must agree) are followed by the seeds and,
-# by default, by this node, so during an attack it leaves the attacker's chain on its own. A wrong
-# record costs no blocks: once it is withdrawn the node returns to them. ENFORCE_CHECKPOINTS=0
-# only warns instead.
-CHECKPOINTS=(--enforce-dns-checkpointing)
-if [ "${ENFORCE_CHECKPOINTS:-1}" = 0 ]; then
-  CHECKPOINTS=()
-  echo " Only warning about the project's emergency checkpoints (ENFORCE_CHECKPOINTS=0)."
-  echo
+# Emergency checkpoints (DNSSEC-signed, both domains must agree) are followed by the seeds, pools
+# and exchanges. Home nodes only warn unless ENFORCE_CHECKPOINTS=1: during an attack opacra.org
+# asks miners to restart with it. A wrong record costs no blocks: once withdrawn, the node returns.
+CHECKPOINTS=()
+if [ "${ENFORCE_CHECKPOINTS:-0}" = 1 ]; then
+  CHECKPOINTS=(--enforce-dns-checkpointing)
+  echo " Following the project's emergency checkpoints (ENFORCE_CHECKPOINTS=1)."
+else
+  echo " Emergency checkpoints: this node only warns. To follow them:  ENFORCE_CHECKPOINTS=1 ./start-testnet.sh"
 fi
+echo
 exec ./opacrad --testnet "${CHECKPOINTS[@]}" --start-mining "$ADDR" --mining-threads "$THREADS"

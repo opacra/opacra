@@ -338,6 +338,17 @@ namespace cryptonote
       auto pos = record.find(":");
       if (pos != std::string::npos)
       {
+        // Opacra (25 Oct 2026 review): "serial:N" is the records' version number, not a
+        // checkpoint (older nodes skip it: "serial" doesn't parse as a height)
+        if (record.compare(0, pos, "serial") == 0)
+        {
+          uint64_t serial = 0;
+          std::stringstream ss(record.substr(pos + 1));
+          if (ss >> serial && ss.eof())
+            m_dns_serial = std::max(m_dns_serial, serial);
+          continue;
+        }
+
         uint64_t height;
         crypto::hash hash;
 

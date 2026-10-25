@@ -18,12 +18,19 @@ That protects against a single hijacked or mistyped zone.
 
 - **Nodes started by hand** read the checkpoints every 5 minutes and log a warning if their
   chain disagrees. They are not forced onto a chain by the project.
-- **Home nodes started by the launchers** enforce them too (from v0.2.6, decided 24 Oct 2026
-  for mainnet; testnet 3 does the same so it rehearses mainnet), so during an attack every
-  miner leaves the attacker's chain on its own. This is safe because a wrong record costs no
-  blocks: enforcing nodes keep what they roll back and return to it once the record is
-  withdrawn. A miner can choose to only warn: `ENFORCE_CHECKPOINTS=0 ./start-testnet.sh` on
-  Linux, or `set ENFORCE_CHECKPOINTS=0` in the Windows start file.
+- **Home nodes started by the launchers** only warn, and print at startup how to switch
+  enforcement on: `ENFORCE_CHECKPOINTS=1 ./start-testnet.sh` on Linux, or
+  `set ENFORCE_CHECKPOINTS=1` in the Windows start file. During an attack the announcement
+  asks miners to do that (checklist step 7). Decided 25 Oct 2026 for launch: while both
+  domains sit in one registrar account, whoever took that account could publish a matching
+  forged record and nobody could withdraw it until the account is recovered, which can take
+  days. If every home miner enforced, all of them would stall for that long and only the
+  miners not enforcing, the attacker among them, would keep producing blocks.
+  **Planned:** enforcement on by default in the first release after opacra.com moves to a
+  second registrar, once three things are done: the serial-number check below has shipped
+  and been reviewed; the two domains are at different registrars with different people
+  holding the logins; and a testnet drill has passed (a record forged in one zone only is
+  ignored; a genuine record in both is followed).
 - **Seeds, exchanges and pools** run with `enforce-dns-checkpointing=1` (in
   `contrib/launch/opacra.conf`). They refuse any reorganisation at or below the newest
   checkpoint, and if their own chain disagrees they roll back to before it and follow the
@@ -47,6 +54,19 @@ A TXT record whose value is `height:hash`, for example:
 
 There is always one standing record (an older block). Nodes then see a healthy answer in
 normal times, and an emergency only means adding one more record.
+
+**Every set of records also carries a serial number**, as one more TXT record under the
+same name: `serial:<number>`, for example `serial:1793217600`. Use the current time from
+`date +%s` on the PC, and **publish a new, higher serial with every change** (adding,
+correcting or removing any record), the same value on both domains. Nodes from v0.2.6
+remember the highest serial they have seen, also across restarts, and refuse any answer
+with a lower one, or with none once they have seen one. DNSSEC proves an answer was
+signed, not that it is current: an older signed answer stays valid for days, so without
+the serial someone could replay the answer from before an emergency record to one node
+and lift the checkpoint there. A refused answer logs `DNS checkpoint records are older
+than records already seen` and sends the seed's phone alert "stale DNS checkpoint answer
+refused". If you see that and didn't just make a mistake with the serial, someone is
+replaying old answers: check that node's network and resolver.
 
 **A new chain starts with its genesis as the standing record** (`0:<genesis hash>`, printed
 by `make_genesis.py verify`), published on both domains on launch day in place of any older
@@ -137,7 +157,9 @@ enforcing nodes would stall on a block that never comes.
    Add New Record:
    - Type **TXT Record**, Host **testpoints** (mainnet: **checkpoints**), Value
      `H:hash`, TTL **1 min**
-   - Same record on opacra.org and opacra.com. Copy and paste the value; never retype it.
+   - In the same zone, change the `serial:` record to a new, higher value: `date +%s` on the
+     PC. Without a higher serial, nodes that already saw the old one refuse the new set.
+   - Same records on opacra.org and opacra.com. Copy and paste the values; never retype them.
 5. **Check DNS.** From the PC: `dig +short TXT testpoints.opacra.org` and
    `dig +short TXT testpoints.opacra.com` must print the same lines.
 6. **Check the seed** within about 5 minutes (the phone also gets "checkpoint now enforced at
@@ -146,20 +168,33 @@ enforcing nodes would stall on a block that never comes.
    `-u opacrad`) shows
    `DNS checkpoint enforced: block H = …`.
 7. **Tell those who need to know**: exchanges, pools, the website and announcement
-   channels. Give the height and hash, and ask them to wait for more confirmations. Home
-   miners on v0.2.6 or later follow the checkpoint on their own; ask anyone who switched to
-   warn-only (`ENFORCE_CHECKPOINTS=0`) or runs an older version to restart with a current
-   launcher.
+   channels. Give the height and hash, and ask them to wait for more confirmations. Ask
+   home miners to **turn on checkpoint enforcement** and restart, using this text:
+
+   > Opacra emergency checkpoint at block H. Miners: turn on checkpoint enforcement and
+   > restart, so your miner follows the honest chain. Windows: right-click "Start Opacra
+   > testnet", Edit, change `set ENFORCE_CHECKPOINTS=0` to `set ENFORCE_CHECKPOINTS=1`,
+   > save, start it again. Linux: `ENFORCE_CHECKPOINTS=1 ./start-testnet.sh`. Exchanges and
+   > pools: wait for more confirmations. Every checkpoint is listed on opacra.org.
+
 8. **Afterwards**: build the checkpoint into the next release (`ADD_CHECKPOINT2` in
    `src/checkpoints/checkpoints.cpp`, values from `make_checkpoint.sh`). Once that release
-   is widely run, remove the emergency record from both domains at the same time, keeping
-   the standing record.
+   is widely run, and **only once the seeds' main chain is heavier than any side chain they
+   keep**, remove the emergency record from both domains at the same time (with a new,
+   higher serial), keeping the standing record. Check on each seed with
+   `curl -s http://127.0.0.1:29961/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_alternate_chains"}'`
+   (testnet: port 29971): every chain's `difficulty` must be below the main chain's
+   `cumulative_difficulty` from `get_info`. Nodes that haven't upgraded still keep the
+   attacker's removed blocks while they are heavier, and would return to them if the record
+   went away too early.
 
 ## Correcting or removing a checkpoint
 
 From v0.2.6 an enforcing node follows DNS as it is at each read (every 5 minutes): the DNS
 checkpoints are a set of their own that each successful read replaces (24 Oct 2026 audit).
 
+- **Every change needs a new, higher `serial:`** on both domains (see "The record"). A set
+  published with an old serial is refused by every node that has seen a newer one.
 - **To remove one**, delete that record from both domains. Within about 5 minutes the nodes
   log `DNS checkpoint withdrawn: block H … is no longer enforced`, and the seed's phone alert
   says "checkpoint at block H removed from DNS". No restart is needed. **Never delete the
@@ -171,12 +206,15 @@ checkpoints are a set of their own that each successful read replaces (24 Oct 20
   `Rolled back to height … The N removed block(s) are kept as a side chain`. Once the record
   is withdrawn or corrected, the node logs `Returning to a kept side chain of N block(s)` and
   is back on the same tip within about 5 minutes, with its payments confirmed at the same
-  heights, without a restart and without anyone mining. While a wrong record stands, enforcing
-  nodes can't add blocks at or above its height, so act within minutes: check the record
-  against two nodes and the explorer, then delete or correct it on both domains. (Rehearsed
-  with `contrib/testnet/dns_withdraw_test.py`: a forged record at block 1, a wrong daily
-  record, a corrected record, an emptied zone and a restart.) Older nodes deleted those
-  blocks for good; run v0.2.6 or later wherever checkpoints are enforced.
+  heights, without a restart and without anyone mining. While a wrong record at height H
+  stands, an enforcing node can still add the two blocks below it (H−2 and H−1) and nothing
+  at or above H, so act within minutes: check the record against two nodes and the explorer,
+  then delete or correct it on both domains. If one of those two blocks contains a payment
+  that conflicts with one in the kept blocks, the kept chain fails its check on the way back
+  and the node fetches the honest blocks from its peers instead. (Rehearsed with
+  `contrib/testnet/dns_withdraw_test.py`: a forged record at block 1, a wrong daily record,
+  a corrected record, an emptied zone, a restart, and a replayed older answer.) Older nodes
+  deleted those blocks for good; run v0.2.6 or later wherever checkpoints are enforced.
 - **To correct one**, change its value on both domains. Nodes log `DNS checkpoint changed:
   block H was …, now …` and enforce the new hash. (Before v0.2.6 this shut nodes down: run
   only v0.2.6 or later on seeds.)

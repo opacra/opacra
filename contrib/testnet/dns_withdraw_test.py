@@ -15,7 +15,13 @@ for the two domains. It mines a chain that includes a real payment, mining stops
      keeps the last records, so it stays rolled back until the genesis record is back. This
      is why the emergency guide says never to delete the genesis record;
   5. a restart while a forged record stands: the kept blocks survive it, and withdrawing the
-     record still brings the node back.
+     record still brings the node back;
+  6. the replay attack (25 Oct 2026 review): an emergency record stands and the node is served
+     the older, still validly signed answer from before it. Every published set carries a
+     "serial:N" record, and the node refuses a set older than the newest it has seen, so it
+     stays; the real withdrawal (a higher serial) brings it back;
+  7. the newest serial survives a restart, so an older answer is still refused after one;
+  8. once serials are in use, a set without one is refused.
 
   python3 contrib/testnet/dns_withdraw_test.py [--bin DIR]   (default: the newest build)
 Standard library only. Exit code 0 when every check passes.
@@ -69,10 +75,26 @@ def main():
     env = dict(os.environ, OPACRA_TEST_DNS_CHECKPOINTS=str(records))
     env.pop("HTTPS_PROXY", None); env.pop("HTTP_PROXY", None)
 
-    def publish(*lines):
+    serial = [1792800000]
+
+    def publish_raw(*lines):
         tmp = records.with_suffix(".new")
         tmp.write_text("".join(l + "\n" for l in lines))
         tmp.replace(records)   # atomic, so the node never reads half a file
+
+    def publish(*lines, at=None):
+        # every change publishes a higher serial, as the emergency guide says; "at" replays an
+        # older serial (what a saved, still validly signed DNS answer would carry)
+        if not lines:
+            publish_raw()
+            return
+        if at is None:
+            serial[0] += 1
+            at = serial[0]
+        publish_raw(f"serial:{at}", *lines)
+
+    def refused_count():
+        return (D / "node.log").read_text(errors="replace").count("older than records already seen")
 
     def start_node(offline):
         # Mining needs a node that counts as synchronised: --offline, while the chain is built.
@@ -210,6 +232,46 @@ def main():
           f"height {d.height()}, side chain of {kept_chain_len()}")
     publish(G)
     back_to_full_chain("withdrawn after a restart")
+
+    # 6. the replay attack: an emergency record stands, and someone serves this node the older
+    #    answer from before it (still validly signed). The node must ignore it and stay.
+    before_emergency = serial[0]          # the serial of the answer just before the emergency
+    publish(G, f"1:{secrets.token_hex(32)}")
+    ok = wait(lambda: d.height() == 1, 60)
+    check(ok, "emergency record at block 1: rolled back to the genesis block", f"height {d.height()}")
+    refused0 = refused_count()
+    publish(G, at=before_emergency)       # the replayed pre-emergency answer
+    time.sleep(20)
+    check(d.height() == 1, "a replayed older answer does not lift the emergency record", f"height {d.height()}")
+    check(refused_count() > refused0, "the node logs the older answer as refused")
+    publish(G)                            # the real withdrawal, with a higher serial
+    back_to_full_chain("real withdrawal after the replay")
+
+    # 7. the newest serial survives a restart: after one, an older answer carrying a wrong
+    #    record is still refused
+    serial_files = list((D / "node").rglob("dns_checkpoint_serial"))
+    saved = serial_files[0].read_text().strip() if serial_files else ""
+    check(saved == str(serial[0]), "the newest serial is saved in the data folder", f"saved {saved or 'nothing'}")
+    node.send_signal(signal.SIGTERM)
+    node.wait(timeout=120)
+    node = start_node(False)
+    d.wait_ready(180)
+    pid0 = node.pid
+    refused0 = refused_count()
+    publish(G, f"40:{secrets.token_hex(32)}", at=serial[0] - 3)
+    time.sleep(20)
+    check(d.height() == H0 and hash_at(H0 - 1) == tip0, "after a restart, an older answer with a wrong record is refused",
+          f"height {d.height()}")
+    check(refused_count() > refused0, "after a restart, the node logs it as refused")
+
+    # 8. once serials are in use, a set without one is refused too
+    refused0 = refused_count()
+    publish_raw(G, f"50:{secrets.token_hex(32)}")
+    time.sleep(20)
+    check(d.height() == H0 and hash_at(H0 - 1) == tip0, "a set without a serial is refused once serials are in use",
+          f"height {d.height()}")
+    check(refused_count() > refused0, "the set without a serial is logged as refused")
+    publish(G)
 
     log("ALL CHECKS PASSED" if FAILS == 0 else f"{FAILS} CHECK(S) FAILED")
     log(f"data: {D}")

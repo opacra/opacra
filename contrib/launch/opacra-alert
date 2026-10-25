@@ -222,6 +222,7 @@ LOG_PATTERNS = [
     ("conflict", re.compile(r"DNS checkpoint at block (\d+) .*conflicts with")),
     ("rollback", re.compile(r"Rolled back to height (\d+) to pass a checkpoint\. The (\d+) removed block")),
     ("returned", re.compile(r"Returning to a kept side chain of (\d+) block\(s\) from height (\d+)")),
+    ("stale", re.compile(r"DNS checkpoint records are older than records already seen \(serial (\d+), newest seen (\d+)\)")),
 ]
 
 
@@ -358,6 +359,14 @@ def watchdog():
                     "this is expected. If not, the record may be wrong or forged: check both domains now. "
                     "Withdrawing or correcting it (keep the genesis record) brings the blocks back within "
                     "about 5 minutes (docs/EMERGENCY_CHECKPOINTS.md)." % (g[0], g[1]),
+                    priority=5, tags="rotating_light"))
+            if kind == "stale" and not first:
+                to_send.append(lambda g=groups: send(
+                    "stale DNS checkpoint answer refused",
+                    "The seed received DNS checkpoint records with serial %s, older than the newest it has seen "
+                    "(%s), and kept its current checkpoints. If you just published records, give them a new, "
+                    "higher serial (date +%%s) on both domains. If not, someone may be replaying old DNS answers "
+                    "to this seed: check its network and resolver (docs/EMERGENCY_CHECKPOINTS.md)." % (g[0], g[1]),
                     priority=5, tags="rotating_light"))
             if kind == "returned" and not first:
                 to_send.append(lambda g=groups: send(

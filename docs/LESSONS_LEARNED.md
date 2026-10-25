@@ -3,6 +3,14 @@
 Mistakes and surprises from building and testing Opacra, each with the rule that stops it
 happening again. Newest first. Read this before a release, a drill or a launch step.
 
+## 25 Oct 2026: review of the 24 Oct update
+
+| What went wrong | Why | Rule from now on |
+|---|---|---|
+| The 24 Oct fix let a node lift an emergency checkpoint by itself when the record went missing, and a replayed older DNS answer counts as missing | I tested a withdrawal, not what else could look like one. DNSSEC proves an answer was signed, not that it is current | When a change lets a node undo a protection on its own, ask what an attacker can make it see (replays, stale data, outages) and test that too. Fixed: records carry a serial and older ones are refused |
+| A note to a reviewer credited him with advice he hadn't given (launchers enforcing), and it reversed a decision | Two review texts arrived a day apart, and I didn't track which said what | Keep each reviewer's report and advice in its own file, and quote the report when citing it |
+| I recommended that home miners enforce checkpoints, assuming a wrong record can be withdrawn in minutes | True for a typo, false for a hijacked registrar account, where the attacker controls what is published | Judge a recovery step by the worst case it must handle, not the common one |
+
 ## 24 Oct 2026: second independent audit, upstream sync
 
 | What went wrong | Why | Rule from now on |

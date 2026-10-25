@@ -44,9 +44,10 @@ Mining threads: start-testnet.sh uses a quarter of the CPU threads. To use N thr
 home connection behind a router: mining and syncing work as usual.
 Emergency checkpoints: the project publishes them (DNSSEC-signed records under opacra.org
 and opacra.com, which must agree) only to stop an attack, and lists every one on opacra.org.
-The seeds and your node follow them, so during an attack your miner leaves the attacker's
-chain on its own. If a record is ever wrong, nothing is lost: once it is withdrawn your node
-returns to its blocks. To only warn instead:  ENFORCE_CHECKPOINTS=0 ./start-testnet.sh
+The seeds, pools and exchanges follow them; your node only warns if its chain disagrees. If
+opacra.org asks miners to follow them during an attack, restart with:
+ENFORCE_CHECKPOINTS=1 ./start-testnet.sh   (a wrong record costs no blocks: once it is
+withdrawn, your node returns to them)
 When the wallet says new coins have arrived, type  refresh  and enter your password when the
 wallet asks for it (never after the [wallet ...]: prompt).
 

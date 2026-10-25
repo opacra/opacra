@@ -80,15 +80,18 @@ set MINE_THREADS=
 if "%MINE_THREADS%"=="" set /a MINE_THREADS=%NUMBER_OF_PROCESSORS%/4
 set /a THREADS=%MINE_THREADS%
 if %THREADS% LSS 1 set THREADS=1
-rem Emergency checkpoints: this node follows them, like the seeds. They are published only to stop
-rem an attack, and a wrong one costs no blocks. To only warn instead, change the next line to  set ENFORCE_CHECKPOINTS=0
-set ENFORCE_CHECKPOINTS=1
-set "CHECKPOINTS=--enforce-dns-checkpointing"
-if "%ENFORCE_CHECKPOINTS%"=="0" set "CHECKPOINTS="
+rem Emergency checkpoints: the seeds, pools and exchanges follow them; this node only warns.
+rem To follow them too (opacra.org asks for it during an attack), change the next line to  set ENFORCE_CHECKPOINTS=1
+set ENFORCE_CHECKPOINTS=0
+set "CHECKPOINTS="
+if "%ENFORCE_CHECKPOINTS%"=="1" set "CHECKPOINTS=--enforce-dns-checkpointing"
 cls
 echo.
 echo  Opacra testnet: joining the network and mining with %THREADS% threads to your wallet
 echo  !ADDR!
+echo.
+if "%ENFORCE_CHECKPOINTS%"=="1" echo  Following the project's emergency checkpoints.
+if not "%ENFORCE_CHECKPOINTS%"=="1" echo  Emergency checkpoints: this node only warns. To follow them, edit this file: set ENFORCE_CHECKPOINTS=1
 echo.
 echo  Leave this window open while you mine; close it to stop. Mining starts once the
 echo  node has caught up, usually within a few minutes. Type  status  and press Enter
@@ -155,10 +158,10 @@ on a home connection behind a router. Mining and syncing work as usual; nothing 
 
 Emergency checkpoints: the project publishes them (DNSSEC-signed records under opacra.org and
 opacra.com, which must agree) only to stop an attack, and lists every one on opacra.org. The
-seeds and your node follow them, so during an attack your miner leaves the attacker's chain on
-its own. If a record is ever wrong, nothing is lost: once it is withdrawn your node returns to its
-blocks. To only warn instead: right-click "Start Opacra testnet", Edit, change the line
-set ENFORCE_CHECKPOINTS=1  to  set ENFORCE_CHECKPOINTS=0 , save, and start it again.
+seeds, pools and exchanges follow them; your node only warns if its chain disagrees. If
+opacra.org asks miners to follow them during an attack: right-click "Start Opacra testnet",
+Edit, change the line  set ENFORCE_CHECKPOINTS=0  to  set ENFORCE_CHECKPOINTS=1 , save, and
+start it again. A wrong record costs no blocks: once it is withdrawn, your node returns to them.
 
 Coming from testnet 2 (v0.2.4 or older): testnet 3 is a new chain, and testnet 2 coins don't
 carry over. Unzip this version into a new folder and double-click "Start Opacra testnet":

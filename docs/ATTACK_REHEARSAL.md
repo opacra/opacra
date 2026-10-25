@@ -55,8 +55,9 @@ survived and the run carried on from there.
    chain. The seeds then hold the honest chain alone and nothing mines it (a seed with no
    honest peers refuses to mine: "BUSY"). **Decided 18 Oct:** the launchers (`start-testnet.sh`, "Start Opacra testnet") now
    enforce DNS checkpoints (`--enforce-dns-checkpointing`); the READMEs say how to opt out.
-   (v0.2.5 briefly made them warn only; v0.2.6 enforces again, now that a checkpoint rollback
-   keeps the blocks it removes.)
+   (Since v0.2.5 they warn only and say at startup how to switch enforcement on: while both
+   domains sit in one registrar account, a hijacked account could stall every enforcing miner.
+   Enforcement becomes the default again after the domains move to separate registrars.)
 4. **Seeds block every peer that relays the attacker's chain for 24 hours**, including honest
    home nodes that simply followed it. Even after such a node enforces the checkpoint, the
    seeds keep refusing it for a day (in the rehearsal it had to be unblocked by hand).
