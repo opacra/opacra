@@ -77,8 +77,12 @@ with it, also across restarts and also when they only warn. They refuse any answ
   than a day in the future.
 
 Each release also builds in a minimum serial, so a new install refuses answers from
-before the release. An enforcing node restarts with the last set it accepted, so an
-emergency checkpoint stays in force across a restart even if DNS can't be read then.
+before the release. An enforcing node restarts with the last set it accepted (a set it
+ignored because it conflicts with a built-in checkpoint is never saved), so an emergency
+checkpoint stays in force across a restart even if DNS can't be read then, and even if the
+node's clock is wrong when it boots. A refusal that says "more than a day ahead of this
+node's clock" means a typo in the serial, or that node's clock is behind: check `date` on
+it.
 
 DNSSEC proves an answer was signed, not that it is current: an older signed answer stays
 valid for days, so without the serial someone could replay the answer from before an

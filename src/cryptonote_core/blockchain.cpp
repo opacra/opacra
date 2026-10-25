@@ -5208,6 +5208,7 @@ bool Blockchain::switch_to_kept_chain()
 
   bool stop_batch = m_db->batch_start();
   bool switched = false;
+  bool clock_skipped = false;
   size_t tries = 0;
   for (const auto &tip : tips)
   {
@@ -5271,6 +5272,18 @@ bool Blockchain::switch_to_kept_chain()
     if (!passes)
       continue;
 
+    // blocks that only look too new for this node's clock would fail the switch and be deleted
+    // from the store; leave them for when the clock is right (25 Oct 2026 review)
+    const uint64_t clock_limit = (uint64_t)time(NULL) + CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT;
+    if (std::any_of(chain.begin(), chain.end(), [clock_limit](const block_extended_info &b) { return b.bl.timestamp > clock_limit; }))
+    {
+      MCLOG_RED(el::Level::Warning, "global", "A kept side chain of " << chain.size() << " block(s) has blocks dated ahead of this "
+        "node's clock; not returning to it until the clock is right (check this node's clock)");
+      m_kept_failed_tips.erase(tip.second);
+      clock_skipped = true;
+      continue;
+    }
+
     MGINFO_GREEN("Returning to a kept side chain of " << chain.size() << " block(s) from height " << chain.front().height
       << ": the checkpoint that removed it is no longer in force and it is the heavier chain");
     // full validation of every block; on failure the main chain is restored and the bad
@@ -5286,8 +5299,11 @@ bool Blockchain::switch_to_kept_chain()
     m_db->batch_stop();
   // every candidate was tried and failed: nothing to do until a side block is added or the
   // checkpoints change
-  if (!switched && tries <= 5 && tries >= tips.size())
+  // (not when a chain was only put off for the clock: it is retried at the next look)
+  if (!switched && !clock_skipped && tries <= 5 && tries >= tips.size())
     m_kept_nothing_to_try = true;
+  else if (clock_skipped)
+    m_kept_nothing_to_try = false;
   return switched;
 }
 //------------------------------------------------------------------
@@ -5358,9 +5374,12 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
           else
             saved_points[h] = id;
         }
-        if (ok && saved > now + 86400)
+        // a fixed bound, not one relative to this node's clock: a node that boots with its clock
+        // behind (no clock battery, NTP not synced yet, an old VM snapshot) must still restore
+        // its emergency checkpoints (25 Oct 2026 review). 4102444800 is 1 Jan 2100.
+        if (ok && saved > 4102444800ULL)
         {
-          MCLOG_RED(el::Level::Warning, "global", "Ignoring the saved DNS checkpoint serial " << saved << ": it is more than a day in the future");
+          MCLOG_RED(el::Level::Warning, "global", "Ignoring the saved DNS checkpoint serial " << saved << ": it is beyond the year 2100");
           ok = false;
         }
         if (ok && saved >= m_dns_serial_seen)
@@ -5371,19 +5390,60 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
           // an enforcing node starts with the last set it accepted, so an emergency checkpoint
           // stays in force across a restart even if DNS can't be read, or the current answer is
           // refused, when the node comes back
-          if (m_enforce_dns_checkpoints && m_dns_serial_points_known && m_checkpoints.set_dns_points(saved_points))
-            MGINFO("DNS checkpoints restored from the last accepted set (serial " << saved << ", "
-              << saved_points.size() << " checkpoint(s))");
+          if (m_enforce_dns_checkpoints && m_dns_serial_points_known)
+          {
+            if (m_checkpoints.set_dns_points(saved_points))
+              MGINFO("DNS checkpoints restored from the last accepted set (serial " << saved << ", "
+                << saved_points.size() << " checkpoint(s))");
+            else
+              MCLOG_RED(el::Level::Error, "global", "Could not restore the saved DNS checkpoints (serial " << saved << "): they "
+                "conflict with a checkpoint built into this node or in checkpoints.json. Starting without DNS checkpoints "
+                "until DNS answers (see docs/EMERGENCY_CHECKPOINTS.md).");
+          }
         }
       }
   }
+  // the set's serial is saved as accepted only once the set is actually in force (enforcing
+  // node: set_dns_points succeeded) or passed the same conflict check (warn-only node). Saved
+  // earlier, a set that conflicts with a built-in checkpoint would be restored at the next
+  // start, fail there, and leave the node with no DNS checkpoints (25 Oct 2026 review).
+  bool commit_serial = false;
+  const uint64_t new_serial = dns_points.get_dns_serial();
+  auto save_serial = [&]() {
+    m_dns_serial_seen = new_serial;
+    m_dns_serial_points = dns_points.get_points();
+    m_dns_serial_points_known = true;
+    m_dns_refusal_logged.clear();
+    if (serial_file.empty())
+      return;
+    const std::string tmp = serial_file + ".tmp";
+    {
+      std::ofstream out(tmp, std::ios::trunc);
+      out << new_serial << "\n";
+      for (const auto &pt : m_dns_serial_points)
+        out << pt.first << ":" << epee::string_tools::pod_to_hex(pt.second) << "\n";
+    }
+    if (std::rename(tmp.c_str(), serial_file.c_str()) != 0)
+      MERROR("Could not save the DNS checkpoint serial to " << serial_file);
+  };
   if (read_dns && !dns_points.get_points().empty())
   {
-    const uint64_t serial = dns_points.get_dns_serial();
+    const uint64_t serial = new_serial;
     std::string refusal;
-    if (dns_points.dns_serial_bad() || serial > now + 86400)
+    // the set this node already trusts, read again: nothing to check or change, whatever the
+    // clock says
+    const bool same_as_trusted = !dns_points.dns_serial_bad() && m_dns_serial_points_known &&
+      serial == m_dns_serial_seen && dns_points.get_points() == m_dns_serial_points;
+    if (same_as_trusted)
+    {
+      // nothing to do
+    }
+    else if (dns_points.dns_serial_bad())
       refusal = "serial " + (dns_points.dns_serial_text().empty() ? std::string("?") : dns_points.dns_serial_text()) +
-        " is invalid (it must be one plain number, a Unix time no more than a day ahead)";
+        " is invalid (it must be one plain number, and only one serial record)";
+    else if (serial > now + 86400)
+      refusal = "serial " + std::to_string(serial) + " is more than a day ahead of this node's clock (a typo in the serial, "
+        "or this node's clock is behind: check it)";
     else if (serial < m_dns_serial_seen)
       refusal = "serial " + std::to_string(serial) + " is older than the newest seen (" + std::to_string(m_dns_serial_seen) + ")";
     else if (serial == m_dns_serial_seen && m_dns_serial_points_known && dns_points.get_points() != m_dns_serial_points)
@@ -5397,24 +5457,9 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
           "(see docs/EMERGENCY_CHECKPOINTS.md).");
       m_dns_refusal_logged = refusal;
     }
-    else if (serial > m_dns_serial_seen || !m_dns_serial_points_known)
+    else if (!same_as_trusted && (serial > m_dns_serial_seen || !m_dns_serial_points_known))
     {
-      m_dns_serial_seen = serial;
-      m_dns_serial_points = dns_points.get_points();
-      m_dns_serial_points_known = true;
-      m_dns_refusal_logged.clear();
-      if (!serial_file.empty())
-      {
-        const std::string tmp = serial_file + ".tmp";
-        {
-          std::ofstream out(tmp, std::ios::trunc);
-          out << serial << "\n";
-          for (const auto &pt : m_dns_serial_points)
-            out << pt.first << ":" << epee::string_tools::pod_to_hex(pt.second) << "\n";
-        }
-        if (std::rename(tmp.c_str(), serial_file.c_str()) != 0)
-          MERROR("Could not save the DNS checkpoint serial to " << serial_file);
-      }
+      commit_serial = true;   // saved below, once the set is in force
     }
   }
 
@@ -5444,6 +5489,8 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
         if (m_dns_checkpoints_conflict)
           MGINFO("DNS checkpoints agree with this node's own checkpoints again");
         m_dns_checkpoints_conflict = false;
+        if (commit_serial)
+          save_serial();
         for (const auto &pt : previous)
         {
           const auto it = dns_points.get_points().find(pt.first);
@@ -5489,6 +5536,8 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
     }
     if (m_checkpoints.check_for_conflicts(dns_points))
     {
+      if (commit_serial)
+        save_serial();
       check_against_checkpoints(dns_points, false);
     }
     else

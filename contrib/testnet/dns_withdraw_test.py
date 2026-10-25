@@ -21,7 +21,14 @@ for the two domains. It mines a chain that includes a real payment, mining stops
      "serial:N" record, and the node refuses a set older than the newest it has seen, so it
      stays; the real withdrawal (a higher serial) brings it back;
   7. the newest serial survives a restart, so an older answer is still refused after one;
-  8. once serials are in use, a set without one is refused.
+  8. once serials are in use, a set without one is refused;
+  0, 9-11 (25 Oct 2026 review of the serials): the release's built-in minimum serial; unusable
+     serials ("-1", an extra digit, two records); the same serial with different records (a
+     zone caught mid-edit), also after a restart; a warn-only node saving the serial;
+  12. a set that conflicts with checkpoints.json is ignored and not saved, so a restart keeps the
+     emergency set really in force;
+  13. a node booting with its clock 3 days behind keeps its saved emergency set and its kept
+     blocks.
 
   python3 contrib/testnet/dns_withdraw_test.py [--bin DIR]   (default: the newest build)
 Standard library only. Exit code 0 when every check passes.
@@ -99,7 +106,7 @@ def main():
         text = (D / "node.log").read_text(errors="replace")
         return sum(1 for l in text.splitlines() if "DNS checkpoint records refused" in l and reason in l)
 
-    def start_node(offline, enforce=True):
+    def start_node(offline, enforce=True, extra_env=None):
         # Mining needs a node that counts as synchronised: --offline, while the chain is built.
         # The checkpoint part needs the opposite (an offline node never reads DNS checkpoints),
         # so the node is restarted once, before it; a dead exclusive peer keeps it alone.
@@ -109,7 +116,8 @@ def main():
                               "--p2p-bind-ip", "127.0.0.1", "--p2p-bind-port", "34190", "--rpc-bind-port", "34191",
                               "--zmq-rpc-bind-port", "34192", "--non-interactive", "--log-level", "0",
                               "--log-file", str(D / "node.log")] + (["--offline"] if offline else []),
-                             stdout=open(D / "node.out", "a"), stderr=subprocess.STDOUT, env=env, start_new_session=True)
+                             stdout=open(D / "node.out", "a"), stderr=subprocess.STDOUT,
+                             env=dict(env, **(extra_env or {})), start_new_session=True)
         STARTED.append(p)
         return p
 
@@ -176,11 +184,11 @@ def main():
     def on_full_chain():
         return d.height() == H0 and hash_at(H0 - 1) == tip0
 
-    def restart(enforce=True):
+    def restart(enforce=True, extra_env=None):
         nonlocal node, pid0
         node.send_signal(signal.SIGTERM)
         node.wait(timeout=120)
-        node = start_node(False, enforce)
+        node = start_node(False, enforce, extra_env)
         d.wait_ready(180)
         pid0 = node.pid
 
@@ -302,11 +310,11 @@ def main():
     #    extra digit (centuries ahead), and two serial records; a genuine later set still works
     for bad, label in ((["serial:-1"], "serial:-1"), ([f"serial:{serial[0]}0"], "a serial with an extra digit"),
                        ([f"serial:{serial[0] + 1}", f"serial:{serial[0] + 2}"], "two serial records")):
-        refused0 = refused_count("is invalid")
+        refused0 = refused_count()
         publish_raw(*bad, G, f"40:{secrets.token_hex(32)}")
         time.sleep(15)
         check(on_full_chain(), f"{label}: refused, the node stays on its chain", f"height {d.height()}")
-        check(refused_count("is invalid") > refused0, f"{label}: logged as an invalid serial")
+        check(refused_count() > refused0, f"{label}: logged as refused")
     saved = list((D / "node").rglob("dns_checkpoint_serial"))[0].read_text().split()[0]
     check(int(saved) <= serial[0], "no unusable serial was saved", f"saved {saved}")
     publish(G, f"40:{secrets.token_hex(32)}")
@@ -345,6 +353,57 @@ def main():
     check(on_full_chain(), "after switching enforcement on, an older answer with a wrong record is refused",
           f"height {d.height()}")
     check(refused_count("older than") > refused0, "logged as refused")
+    publish(G)
+
+    def log_count(text):
+        return (D / "node.log").read_text(errors="replace").count(text)
+
+    def saved_serial():
+        return list((D / "node").rglob("dns_checkpoint_serial"))[0].read_text().split()[0]
+
+    # 12. a set that conflicts with a checkpoint in checkpoints.json is ignored and not saved, so
+    #     a restart keeps the emergency set that was really in force (the reviewer's test)
+    net_dir = next((D / "node").rglob("lmdb")).parent   # the network's data folder (testnet3)
+    (net_dir / "checkpoints.json").write_text(json.dumps({"hashlines": [{"height": 5, "hash": hash_at(5)}]}))
+    restart()                             # loads checkpoints.json
+    check(on_full_chain(), "checkpoints.json naming the real block 5 is loaded, node on its chain", f"height {d.height()}")
+    publish(G, f"3:{secrets.token_hex(32)}")
+    ok = wait(lambda: d.height() == 1, 60)
+    check(ok, "emergency record at block 3: rolled back to height 1", f"height {d.height()}")
+    in_force = saved_serial()
+    conflicts0 = log_count("conflicts with a checkpoint built into this node")
+    publish(G, f"3:{secrets.token_hex(32)}", f"5:{secrets.token_hex(32)}")   # a typo at the JSON height
+    ok = wait(lambda: log_count("conflicts with a checkpoint built into this node") > conflicts0, 60)
+    check(ok and d.height() == 1, "a set conflicting with checkpoints.json is ignored; the node holds", f"height {d.height()}")
+    check(saved_serial() == in_force, "the conflicting set is not saved as accepted", f"saved {saved_serial()}")
+    restored0 = log_count("restored from the last accepted set")
+    restart()
+    time.sleep(15)
+    check(d.height() == 1, "after a restart the emergency set is still in force", f"height {d.height()}")
+    check(log_count("restored from the last accepted set") > restored0, "the node logs that it restored the saved set")
+    publish(G)
+    back_to_full_chain("withdrawn after the conflicting set")
+
+    # 13. a node that boots with its clock 3 days behind keeps its saved emergency set, and keeps
+    #     the kept blocks instead of trying (and failing) to return to them
+    shim = D / "fake_time_offset.so"
+    subprocess.check_call(["gcc", "-shared", "-fPIC", "-O2", "-o", str(shim), str(HERE / "fake_time_offset.c")])
+    forged = f"1:{secrets.token_hex(32)}"
+    publish(G, forged)
+    ok = wait(lambda: d.height() == 1, 60)
+    check(ok, "emergency record at block 1: rolled back to the genesis block", f"height {d.height()}")
+    restart(extra_env={"LD_PRELOAD": str(shim), "FAKE_TIME_OFFSET": str(-3 * 86400)})
+    time.sleep(20)
+    check(d.height() == 1, "clock 3 days behind: the saved emergency set is still in force", f"height {d.height()}")
+    check(kept_chain_len() >= H0 - 1, "clock 3 days behind: the kept blocks are still kept", f"side chain of {kept_chain_len()}")
+    # a newer set now looks more than a day ahead to this node: refused, with a hint about the clock
+    clock0 = log_count("this node's clock is behind")
+    publish(G, forged)
+    ok = wait(lambda: log_count("this node's clock is behind") > clock0, 30)
+    check(ok and d.height() == 1, "a newer set is refused with a hint to check the clock; the node holds", f"height {d.height()}")
+    restart()                             # clock right again
+    publish(G)
+    back_to_full_chain("withdrawn once the clock is right")
 
     log("ALL CHECKS PASSED" if FAILS == 0 else f"{FAILS} CHECK(S) FAILED")
     log(f"data: {D}")

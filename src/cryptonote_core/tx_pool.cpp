@@ -728,7 +728,12 @@ namespace cryptonote
     CRITICAL_REGION_LOCAL1(m_blockchain);
     std::list<std::pair<crypto::hash, uint64_t>> remove;
     m_blockchain.for_all_txpool_txes([this, &remove](const crypto::hash &txid, const txpool_tx_meta_t &meta, const cryptonote::blobdata_ref*) {
-      uint64_t tx_age = time(nullptr) - meta.receive_time;
+      // Opacra (25 Oct 2026 review): with the clock behind the receive time (a node booted
+      // with its clock wrong), Monero's unsigned "now - receive_time" wrapped to a huge age and
+      // dropped every transaction in the pool, including those of blocks kept after a checkpoint
+      // rollback; a time in the future counts as age 0, as in get_transaction_stats below
+      const uint64_t now = time(nullptr);
+      uint64_t tx_age = now >= meta.receive_time ? now - meta.receive_time : 0;
 
       if((tx_age > CRYPTONOTE_MEMPOOL_TX_LIVETIME && !meta.kept_by_block) ||
          (tx_age > CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME && meta.kept_by_block) )
@@ -816,7 +821,7 @@ namespace cryptonote
           case relay_method::block:
             if (!meta.relayed)
               break; // if it hasn't been relayed yet, relay it
-            if (now - meta.last_relayed_time <= get_relay_delay(meta.last_relayed_time, meta.receive_time))
+            if (now < meta.last_relayed_time || now - meta.last_relayed_time <= get_relay_delay(meta.last_relayed_time, meta.receive_time))
               return true; // continue to next tx
             break;
         }
@@ -825,7 +830,7 @@ namespace cryptonote
         // mentioned by smooth where nodes would flush txes at slightly different times, causing
         // flushed txes to be re-added when received from a node which was just about to flush it
         uint64_t max_age = (tx_relay == relay_method::block) ? CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME : CRYPTONOTE_MEMPOOL_TX_LIVETIME;
-        if (now - meta.receive_time <= max_age / 2)
+        if (now < meta.receive_time || now - meta.receive_time <= max_age / 2)
         {
           try
           {

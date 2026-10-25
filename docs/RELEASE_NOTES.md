@@ -35,7 +35,11 @@ over. It runs exactly the rules planned for mainnet.
   builds in a minimum. So a replayed old DNS answer, or one caught mid-edit, can't lift an
   emergency checkpoint, and a bad serial can't lock nodes out.
 - If no record can be read at all, nodes keep the last records they accepted, also across a
-  restart, so a DNS outage cannot lift a checkpoint during an attack.
+  restart, so a DNS outage cannot lift a checkpoint during an attack. A set that conflicts with
+  a checkpoint built into the node is never saved, and a node that boots with its clock wrong
+  still restores its saved records.
+- A node whose clock goes backwards no longer empties its transaction pool (a fix to
+  Monero's pool code).
 
 ### Wallet privacy
 

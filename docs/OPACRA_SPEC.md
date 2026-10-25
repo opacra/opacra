@@ -332,8 +332,15 @@ Network and wallet:
         than a day in the future.
 
       It saves the highest serial and the records accepted with it in `dns_checkpoint_serial`
-      in its data folder, in warn-only mode too. An enforcing node restarts with that set in
-      force. A saved serial more than a day ahead is ignored.
+      in its data folder, in warn-only mode too, but only once the set is actually in force
+      (enforcing: `set_dns_points` succeeded; warn-only: the same conflict check passed), so a
+      set that conflicts with a built-in checkpoint is never saved. An enforcing node restarts
+      with the saved set in force and logs if that fails. The saved file is bounded by a fixed
+      date (1 Jan 2100), not by the node's clock, so a node booting with its clock behind
+      still restores it; the set it already trusts is accepted again whatever the clock says,
+      and a newer one judged ahead of the clock is refused with a hint to check the clock. A
+      kept chain with blocks dated ahead of the node's clock is left alone, not tried and
+      deleted, until the clock is right.
       `coin_network::dns_checkpoint_min_serial` is a per-release floor for nodes with no
       history, set by `make_genesis.py apply` and raised in each release.
 
@@ -345,6 +352,10 @@ Network and wallet:
       in force until they change, and does nothing when the checkpoints and a fingerprint of
       the side-block ids are unchanged, and the main chain is no lighter, since a look that
       found nothing.
+    - (node policy, Monero fix) the transaction pool computes a transaction's age as 0 when
+      the clock is behind its receive time (`tx_pool.cpp`, `remove_stuck_transactions` and the
+      relay checks). Monero's unsigned subtraction wrapped to a huge age, so a node booted with
+      its clock behind dropped its whole pool, including the transactions of kept blocks.
     - (RPC) `get_outs` reads an output's transaction to set `dev_fund` only when its unlock
       time is its height + 60 blocks, which consensus requires of every coinbase output, so
       ordinary outputs cost no extra read.
