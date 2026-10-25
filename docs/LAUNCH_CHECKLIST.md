@@ -137,6 +137,10 @@ network on the same server reuses the topic by itself. The seeds are built into 
       repository, for Linux x86_64/aarch64, Windows and macOS.
 - [ ] Two people build independently and compare hashes.
 - [ ] Publish `hashes.txt` signed with the release GPG key, and the source tag.
+- [ ] Raise `dns_checkpoint_min_serial` in `src/coin_network.h` for each released network to
+      the `serial:` currently published under its checkpoint record (`dig +short TXT
+      checkpoints.opacra.org`), so new installs refuse older, replayed answers.
+      `make_genesis.py apply` sets it for a network's launch.
 - [ ] Release notes (`docs/RELEASE_NOTES.md`) describe the fixes only. They stay separate from
       the private review notes and the private launch-day runbook: no review finding IDs, no
       open findings, nothing that reveals the genesis. Before committing, search the diff for

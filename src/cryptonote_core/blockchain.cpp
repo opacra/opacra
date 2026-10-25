@@ -31,6 +31,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <sstream>
+#include "coin_network.h"
 #include <boost/asio/dispatch.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/range/adaptor/reversed.hpp>
@@ -5155,21 +5157,29 @@ bool Blockchain::switch_to_kept_chain()
     return false;
   const difficulty_type main_cd = m_db->get_block_cumulative_difficulty(height - 1);
 
-  // Opacra (25 Oct 2026 review): don't re-walk a kept chain on every refresh. A tip that failed
+  // Opacra (25 Oct 2026 reviews): don't re-walk a kept chain on every refresh. A tip that failed
   // the checkpoints in force is skipped until they change; and when the last look found nothing
-  // to try, nothing new can appear until a side block is added or the checkpoints change (the
-  // main chain only gets heavier, so the candidates only shrink).
-  const uint64_t alt_count = m_db->get_alt_block_count();
+  // to try, nothing new can appear while the checkpoints and the set of side blocks are
+  // unchanged and the main chain is no lighter than it was (pop_blocks makes it lighter). The
+  // side blocks are compared by a fingerprint of their ids (reading keys only), not just by
+  // count, since one can be added while another is removed.
+  crypto::hash alt_fingerprint = crypto::null_hash;
+  m_db->for_all_alt_blocks([&alt_fingerprint](const crypto::hash &blkid, const cryptonote::alt_block_data_t &, const cryptonote::blobdata_ref *) {
+    for (size_t i = 0; i < sizeof(alt_fingerprint.data); ++i)
+      alt_fingerprint.data[i] ^= blkid.data[i];
+    return true;
+  }, false);
   if (m_kept_failed_points != m_checkpoints.get_points())
   {
     m_kept_failed_points = m_checkpoints.get_points();
     m_kept_failed_tips.clear();
   }
-  else if (m_kept_nothing_to_try && alt_count == m_kept_last_alt_count)
+  else if (m_kept_nothing_to_try && alt_fingerprint == m_kept_last_fingerprint && main_cd >= m_kept_last_main_cd)
   {
     return false;
   }
-  m_kept_last_alt_count = alt_count;
+  m_kept_last_fingerprint = alt_fingerprint;
+  m_kept_last_main_cd = main_cd;
 
   // real tips of side chains heavier than the main chain: heavier side blocks that no other
   // side block builds on. Normally there are none, because Monero switches to a heavier valid
@@ -5307,6 +5317,107 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
       return false;
   }
 
+  // Opacra (25 Oct 2026 reviews): DNSSEC proves an answer was signed, not that it is current,
+  // and an old signed answer stays valid for days. Every change to the records therefore
+  // publishes a new "serial:N" record (a Unix time, changed last), and a node refuses:
+  //  - a serial lower than the highest it has seen, so a replayed pre-emergency answer can't
+  //    lift an emergency checkpoint and move the node back to a chain it refused;
+  //  - the same serial with different records (the registrar signs every in-between state of
+  //    the zone while it is being edited);
+  //  - an unusable serial: not a plain number, several of them, or more than a day in the
+  //    future ("-1" or a typo with an extra digit would otherwise lock the node out for good).
+  // The highest serial and the records accepted with it are saved in the data folder, also by
+  // nodes that only warn, so switching enforcement on later starts with that history; and each
+  // release builds in a minimum serial for nodes with no history at all.
+  bool stale_set = false;
+  const std::string serial_file = file_path.empty() ? std::string() :
+    (boost::filesystem::path(file_path).parent_path() / "dns_checkpoint_serial").string();
+  const uint64_t now = (uint64_t)time(NULL);
+  if (read_dns && !m_dns_serial_loaded)
+  {
+      m_dns_serial_loaded = true;
+      m_dns_serial_seen = coin_network::dns_checkpoint_min_serial(m_nettype);
+      if (!serial_file.empty())
+      {
+        std::ifstream in(serial_file);
+        std::string line;
+        uint64_t saved = 0;
+        std::map<uint64_t, crypto::hash> saved_points;
+        bool ok = (bool)std::getline(in, line) && !line.empty() && line.size() <= 19 &&
+          std::all_of(line.begin(), line.end(), [](char c) { return c >= '0' && c <= '9'; });
+        if (ok)
+          saved = std::stoull(line);
+        while (ok && std::getline(in, line))
+        {
+          const auto colon = line.find(':');
+          uint64_t h = 0;
+          crypto::hash id;
+          std::stringstream ss(line.substr(0, colon));
+          if (colon == std::string::npos || !(ss >> h) || !epee::string_tools::hex_to_pod(line.substr(colon + 1), id))
+            ok = false;
+          else
+            saved_points[h] = id;
+        }
+        if (ok && saved > now + 86400)
+        {
+          MCLOG_RED(el::Level::Warning, "global", "Ignoring the saved DNS checkpoint serial " << saved << ": it is more than a day in the future");
+          ok = false;
+        }
+        if (ok && saved >= m_dns_serial_seen)
+        {
+          m_dns_serial_seen = saved;
+          m_dns_serial_points = saved_points;
+          m_dns_serial_points_known = !saved_points.empty();
+          // an enforcing node starts with the last set it accepted, so an emergency checkpoint
+          // stays in force across a restart even if DNS can't be read, or the current answer is
+          // refused, when the node comes back
+          if (m_enforce_dns_checkpoints && m_dns_serial_points_known && m_checkpoints.set_dns_points(saved_points))
+            MGINFO("DNS checkpoints restored from the last accepted set (serial " << saved << ", "
+              << saved_points.size() << " checkpoint(s))");
+        }
+      }
+  }
+  if (read_dns && !dns_points.get_points().empty())
+  {
+    const uint64_t serial = dns_points.get_dns_serial();
+    std::string refusal;
+    if (dns_points.dns_serial_bad() || serial > now + 86400)
+      refusal = "serial " + (dns_points.dns_serial_text().empty() ? std::string("?") : dns_points.dns_serial_text()) +
+        " is invalid (it must be one plain number, a Unix time no more than a day ahead)";
+    else if (serial < m_dns_serial_seen)
+      refusal = "serial " + std::to_string(serial) + " is older than the newest seen (" + std::to_string(m_dns_serial_seen) + ")";
+    else if (serial == m_dns_serial_seen && m_dns_serial_points_known && dns_points.get_points() != m_dns_serial_points)
+      refusal = "serial " + std::to_string(serial) + " is the same as the newest seen but the records differ";
+    if (!refusal.empty())
+    {
+      stale_set = true;
+      if (m_dns_refusal_logged != refusal)
+        MCLOG_RED(el::Level::Error, "global", "DNS checkpoint records refused: " << refusal << ". Keeping the current checkpoints. "
+          "A stale or replayed DNS answer, a zone caught mid-edit, or records published without a new serial "
+          "(see docs/EMERGENCY_CHECKPOINTS.md).");
+      m_dns_refusal_logged = refusal;
+    }
+    else if (serial > m_dns_serial_seen || !m_dns_serial_points_known)
+    {
+      m_dns_serial_seen = serial;
+      m_dns_serial_points = dns_points.get_points();
+      m_dns_serial_points_known = true;
+      m_dns_refusal_logged.clear();
+      if (!serial_file.empty())
+      {
+        const std::string tmp = serial_file + ".tmp";
+        {
+          std::ofstream out(tmp, std::ios::trunc);
+          out << serial << "\n";
+          for (const auto &pt : m_dns_serial_points)
+            out << pt.first << ":" << epee::string_tools::pod_to_hex(pt.second) << "\n";
+        }
+        if (std::rename(tmp.c_str(), serial_file.c_str()) != 0)
+          MERROR("Could not save the DNS checkpoint serial to " << serial_file);
+      }
+    }
+  }
+
   if (read_dns && m_enforce_dns_checkpoints)
   {
     // Opacra (24 Oct 2026 audit): the DNS checkpoints are a set of their own that each
@@ -5316,54 +5427,7 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
     // JSON checkpoint is ignored, loudly, instead of stopping the node: whoever controls the
     // domains must not be able to shut down every enforcing node with one record. When nothing
     // can be read, the last good set stays in force: a DNS outage must not lift an emergency
-    // checkpoint in the middle of an attack.
-    // Opacra (25 Oct 2026 review): DNSSEC proves an answer was signed, not that it is current,
-    // and an old signed answer stays valid for days. Every change to the records therefore
-    // publishes a higher "serial:N" record, and a set older than the newest one seen is
-    // refused: a replayed pre-emergency answer can't lift an emergency checkpoint and move the
-    // node back to a chain it refused. The newest serial survives restarts.
-    bool stale_set = false;
-    if (!dns_points.get_points().empty())
-    {
-      const std::string serial_file = file_path.empty() ? std::string() :
-        (boost::filesystem::path(file_path).parent_path() / "dns_checkpoint_serial").string();
-      if (!m_dns_serial_loaded)
-      {
-        m_dns_serial_loaded = true;
-        if (!serial_file.empty())
-        {
-          std::ifstream in(serial_file);
-          uint64_t saved = 0;
-          if (in >> saved)
-            m_dns_serial_seen = saved;
-        }
-      }
-      const uint64_t serial = dns_points.get_dns_serial();
-      if (serial < m_dns_serial_seen)
-      {
-        stale_set = true;
-        if (m_dns_serial_refused_logged != serial + 1)
-          MCLOG_RED(el::Level::Error, "global", "DNS checkpoint records are older than records already seen (serial " << serial
-            << ", newest seen " << m_dns_serial_seen << "): ignoring them and keeping the current checkpoints. This is a stale "
-            "or replayed DNS answer, or the records were published without a higher serial (see docs/EMERGENCY_CHECKPOINTS.md).");
-        m_dns_serial_refused_logged = serial + 1;
-      }
-      else if (serial > m_dns_serial_seen)
-      {
-        m_dns_serial_seen = serial;
-        m_dns_serial_refused_logged = 0;
-        if (!serial_file.empty())
-        {
-          const std::string tmp = serial_file + ".tmp";
-          {
-            std::ofstream out(tmp, std::ios::trunc);
-            out << serial << "\n";
-          }
-          if (std::rename(tmp.c_str(), serial_file.c_str()) != 0)
-            MERROR("Could not save the DNS checkpoint serial to " << serial_file);
-        }
-      }
-    }
+    // checkpoint in the middle of an attack. A refused set (see above) changes nothing.
     if (!dns_points.get_points().empty() && !stale_set)
     {
       const std::map<uint64_t, crypto::hash> previous = m_checkpoints.get_dns_points();
@@ -5415,7 +5479,7 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
       }
     }
   }
-  else if (read_dns)
+  else if (read_dns && !stale_set)
   {
     if (!dns_points.get_points().empty() && dns_points.get_max_height() != m_last_logged_dns_checkpoint)
     {

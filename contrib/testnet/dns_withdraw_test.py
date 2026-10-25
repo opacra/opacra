@@ -75,7 +75,9 @@ def main():
     env = dict(os.environ, OPACRA_TEST_DNS_CHECKPOINTS=str(records))
     env.pop("HTTPS_PROXY", None); env.pop("HTTP_PROXY", None)
 
-    serial = [1792800000]
+    # serials are Unix times: nodes refuse one below the release's built-in minimum or more than
+    # a day ahead, so start from now
+    serial = [int(time.time())]
 
     def publish_raw(*lines):
         tmp = records.with_suffix(".new")
@@ -93,15 +95,17 @@ def main():
             at = serial[0]
         publish_raw(f"serial:{at}", *lines)
 
-    def refused_count():
-        return (D / "node.log").read_text(errors="replace").count("older than records already seen")
+    def refused_count(reason=""):
+        text = (D / "node.log").read_text(errors="replace")
+        return sum(1 for l in text.splitlines() if "DNS checkpoint records refused" in l and reason in l)
 
-    def start_node(offline):
+    def start_node(offline, enforce=True):
         # Mining needs a node that counts as synchronised: --offline, while the chain is built.
         # The checkpoint part needs the opposite (an offline node never reads DNS checkpoints),
         # so the node is restarted once, before it; a dead exclusive peer keeps it alone.
-        p = subprocess.Popen([str(BIN / "opacrad"), "--testnet", "--fixed-difficulty", "1", "--data-dir", str(D / "node"),
-                              "--enforce-dns-checkpointing", "--add-exclusive-node", "127.0.0.1:34199", "--no-igd",
+        p = subprocess.Popen([str(BIN / "opacrad"), "--testnet", "--fixed-difficulty", "1", "--data-dir", str(D / "node")]
+                             + (["--enforce-dns-checkpointing"] if enforce else []) +
+                             ["--add-exclusive-node", "127.0.0.1:34199", "--no-igd",
                               "--p2p-bind-ip", "127.0.0.1", "--p2p-bind-port", "34190", "--rpc-bind-port", "34191",
                               "--zmq-rpc-bind-port", "34192", "--non-interactive", "--log-level", "0",
                               "--log-file", str(D / "node.log")] + (["--offline"] if offline else []),
@@ -168,6 +172,26 @@ def main():
 
     def hash_at(h):
         return d.rpc("get_block_header_by_height", height=h)["block_header"]["hash"]
+
+    def on_full_chain():
+        return d.height() == H0 and hash_at(H0 - 1) == tip0
+
+    def restart(enforce=True):
+        nonlocal node, pid0
+        node.send_signal(signal.SIGTERM)
+        node.wait(timeout=120)
+        node = start_node(False, enforce)
+        d.wait_ready(180)
+        pid0 = node.pid
+
+    # 0. a node with no serial history still refuses a set older than the release's built-in
+    #    minimum serial (here: a replayed answer from long before the release, with a forged record)
+    refused0 = refused_count("older than")
+    publish(G, f"1:{secrets.token_hex(32)}", at=1000)
+    time.sleep(20)
+    check(on_full_chain(), "a set older than the built-in minimum serial is refused", f"height {d.height()}")
+    check(refused_count("older than") > refused0, "the node logs it as refused")
+    publish(G)
 
     def kept_chain_len():
         chains = d.rpc("get_alternate_chains").get("chains", [])
@@ -250,7 +274,8 @@ def main():
     # 7. the newest serial survives a restart: after one, an older answer carrying a wrong
     #    record is still refused
     serial_files = list((D / "node").rglob("dns_checkpoint_serial"))
-    saved = serial_files[0].read_text().strip() if serial_files else ""
+    # the first line is the serial; the records accepted with it follow
+    saved = serial_files[0].read_text().split()[0] if serial_files else ""
     check(saved == str(serial[0]), "the newest serial is saved in the data folder", f"saved {saved or 'nothing'}")
     node.send_signal(signal.SIGTERM)
     node.wait(timeout=120)
@@ -272,6 +297,54 @@ def main():
           f"height {d.height()}")
     check(refused_count() > refused0, "the set without a serial is logged as refused")
     publish(G)
+
+    # 9. unusable serials are refused and never saved: "-1" (parses as 2^64-1), a typo with an
+    #    extra digit (centuries ahead), and two serial records; a genuine later set still works
+    for bad, label in ((["serial:-1"], "serial:-1"), ([f"serial:{serial[0]}0"], "a serial with an extra digit"),
+                       ([f"serial:{serial[0] + 1}", f"serial:{serial[0] + 2}"], "two serial records")):
+        refused0 = refused_count("is invalid")
+        publish_raw(*bad, G, f"40:{secrets.token_hex(32)}")
+        time.sleep(15)
+        check(on_full_chain(), f"{label}: refused, the node stays on its chain", f"height {d.height()}")
+        check(refused_count("is invalid") > refused0, f"{label}: logged as an invalid serial")
+    saved = list((D / "node").rglob("dns_checkpoint_serial"))[0].read_text().split()[0]
+    check(int(saved) <= serial[0], "no unusable serial was saved", f"saved {saved}")
+    publish(G, f"40:{secrets.token_hex(32)}")
+    ok = wait(lambda: d.height() == 38, 60)
+    check(ok, "a genuine later set is still followed after the bad serials", f"height {d.height()}")
+    publish(G)
+    back_to_full_chain("withdrawn after the bad serials")
+
+    # 10. the same serial with different records is refused: the zone is caught mid-edit (the
+    #     serial already changed, the emergency record not yet added) and that answer is replayed
+    publish(G, f"1:{secrets.token_hex(32)}")
+    ok = wait(lambda: d.height() == 1, 60)
+    check(ok, "emergency record at block 1 (serial S): rolled back to the genesis block", f"height {d.height()}")
+    refused0 = refused_count("records differ")
+    publish(G, at=serial[0])              # serial S, without the emergency record
+    time.sleep(20)
+    check(d.height() == 1, "the same serial without the record does not lift it", f"height {d.height()}")
+    check(refused_count("records differ") > refused0, "logged as the same serial with different records")
+    restart()
+    time.sleep(15)
+    check(d.height() == 1, "after a restart, the same serial without the record is still refused", f"height {d.height()}")
+    publish(G)                            # the real withdrawal, serial S+1
+    back_to_full_chain("real withdrawal after the mid-edit replay")
+
+    # 11. a node that only warns tracks and saves the serial too, so switching enforcement on
+    #     later starts with that history
+    restart(enforce=False)
+    publish(G)
+    newest = serial[0]
+    ok = wait(lambda: list((D / "node").rglob("dns_checkpoint_serial"))[0].read_text().split()[0] == str(newest), 60)
+    check(ok, "a warn-only node saves the newest serial")
+    restart(enforce=True)
+    refused0 = refused_count("older than")
+    publish(G, f"40:{secrets.token_hex(32)}", at=newest - 2)
+    time.sleep(20)
+    check(on_full_chain(), "after switching enforcement on, an older answer with a wrong record is refused",
+          f"height {d.height()}")
+    check(refused_count("older than") > refused0, "logged as refused")
 
     log("ALL CHECKS PASSED" if FAILS == 0 else f"{FAILS} CHECK(S) FAILED")
     log(f"data: {D}")

@@ -28,11 +28,14 @@ over. It runs exactly the rules planned for mainnet.
   corrected, the node returns to those blocks within about 5 minutes. Nothing is lost unless
   one of the two blocks the node may still add below the record conflicts with a kept one;
   the node then fetches the honest blocks from its peers.
-- Every set of records carries a serial number (`serial:N`). A node refuses records older
-  than the newest it has seen, also after a restart, so a replayed old DNS answer can't
-  lift an emergency checkpoint.
-- If no record can be read at all, nodes keep the last records they read, so a DNS outage
-  cannot lift a checkpoint during an attack.
+- Every set of records carries a serial number (`serial:N`, a Unix time). A node refuses
+  records older than the newest it has seen, the same serial with different records, and
+  unusable serials (not a plain number, several, or more than a day ahead). It remembers the
+  newest serial and its records across restarts, also when it only warns, and each release
+  builds in a minimum. So a replayed old DNS answer, or one caught mid-edit, can't lift an
+  emergency checkpoint, and a bad serial can't lock nodes out.
+- If no record can be read at all, nodes keep the last records they accepted, also across a
+  restart, so a DNS outage cannot lift a checkpoint during an attack.
 
 ### Wallet privacy
 
@@ -63,7 +66,7 @@ over. It runs exactly the rules planned for mainnet.
 - The seed's phone alerts also report a rollback for a checkpoint, the return to the kept
   blocks, and a refused older answer.
 - Every change to the checkpoint records needs a new, higher `serial:` record on both
-  domains (`date +%s`). See `docs/EMERGENCY_CHECKPOINTS.md`.
+  domains (`date +%s`, digits only), changed last. See `docs/EMERGENCY_CHECKPOINTS.md`.
 - `get_outs` reads a transaction only for outputs that can be coinbase outputs, so
   public RPC requests for many outputs stay cheap.
 - The block explorer may read the seed's chain but write only LMDB's lock file

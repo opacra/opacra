@@ -56,17 +56,37 @@ There is always one standing record (an older block). Nodes then see a healthy a
 normal times, and an emergency only means adding one more record.
 
 **Every set of records also carries a serial number**, as one more TXT record under the
-same name: `serial:<number>`, for example `serial:1793217600`. Use the current time from
-`date +%s` on the PC, and **publish a new, higher serial with every change** (adding,
-correcting or removing any record), the same value on both domains. Nodes from v0.2.6
-remember the highest serial they have seen, also across restarts, and refuse any answer
-with a lower one, or with none once they have seen one. DNSSEC proves an answer was
-signed, not that it is current: an older signed answer stays valid for days, so without
-the serial someone could replay the answer from before an emergency record to one node
-and lift the checkpoint there. A refused answer logs `DNS checkpoint records are older
-than records already seen` and sends the seed's phone alert "stale DNS checkpoint answer
-refused". If you see that and didn't just make a mistake with the serial, someone is
-replaying old answers: check that node's network and resolver.
+same name: `serial:<number>`, for example `serial:1793217600`. Rules:
+
+- The number is the current time from `date +%s` on the PC, copied exactly: digits only,
+  never more than a day ahead.
+- **Every change** (adding, correcting or removing any record) gets a new, higher serial,
+  the same value on both domains.
+- **Change the serial last**, after the other records on that domain. While you edit, the
+  registrar signs every in-between state of the zone. An in-between answer with the *new*
+  serial but without your change could be saved and replayed later, and nodes would take it
+  for the final set. With the serial changed last, every in-between state carries the old
+  serial and different records, and nodes refuse it.
+- Exactly one `serial:` record per domain. Never delete it.
+
+Nodes from v0.2.6 remember the highest serial they have seen, and the records that came
+with it, also across restarts and also when they only warn. They refuse any answer:
+- with a lower serial, or with none once they have seen one;
+- with the same serial but different records;
+- with an unusable serial: not a plain number (`-1` included), more than one, or more
+  than a day in the future.
+
+Each release also builds in a minimum serial, so a new install refuses answers from
+before the release. An enforcing node restarts with the last set it accepted, so an
+emergency checkpoint stays in force across a restart even if DNS can't be read then.
+
+DNSSEC proves an answer was signed, not that it is current: an older signed answer stays
+valid for days, so without the serial someone could replay the answer from before an
+emergency record to one node and lift the checkpoint there. A refused answer logs
+`DNS checkpoint records refused: serial … is …` with the reason, and sends the seed's phone
+alert "DNS checkpoint records refused". If you see that while editing, finish both domains
+and change the serial last. If you aren't editing, check the registrar account at once,
+then that node's network and resolver: someone may be replaying old answers.
 
 **A new chain starts with its genesis as the standing record** (`0:<genesis hash>`, printed
 by `make_genesis.py verify`), published on both domains on launch day in place of any older
@@ -157,8 +177,9 @@ enforcing nodes would stall on a block that never comes.
    Add New Record:
    - Type **TXT Record**, Host **testpoints** (mainnet: **checkpoints**), Value
      `H:hash`, TTL **1 min**
-   - In the same zone, change the `serial:` record to a new, higher value: `date +%s` on the
-     PC. Without a higher serial, nodes that already saw the old one refuse the new set.
+   - **Then, last**, in the same zone, change the `serial:` record to a new, higher value:
+     `date +%s` on the PC, digits only. Without a higher serial, nodes that already saw the
+     old one refuse the new set; changed first, an in-between state could be replayed.
    - Same records on opacra.org and opacra.com. Copy and paste the values; never retype them.
 5. **Check DNS.** From the PC: `dig +short TXT testpoints.opacra.org` and
    `dig +short TXT testpoints.opacra.com` must print the same lines.
@@ -193,8 +214,9 @@ enforcing nodes would stall on a block that never comes.
 From v0.2.6 an enforcing node follows DNS as it is at each read (every 5 minutes): the DNS
 checkpoints are a set of their own that each successful read replaces (24 Oct 2026 audit).
 
-- **Every change needs a new, higher `serial:`** on both domains (see "The record"). A set
-  published with an old serial is refused by every node that has seen a newer one.
+- **Every change needs a new, higher `serial:`** on both domains, changed last (see "The
+  record"). A set published with an old serial is refused by every node that has seen a
+  newer one.
 - **To remove one**, delete that record from both domains. Within about 5 minutes the nodes
   log `DNS checkpoint withdrawn: block H … is no longer enforced`, and the seed's phone alert
   says "checkpoint at block H removed from DNS". No restart is needed. **Never delete the

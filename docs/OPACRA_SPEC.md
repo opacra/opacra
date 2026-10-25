@@ -322,17 +322,29 @@ Network and wallet:
       (`Blockchain::drop_alt_blocks_keeping_heavier`). Test hook, never on mainnet:
       `OPACRA_TEST_DNS_CHECKPOINTS=<file>` reads the records from a file every 5 seconds.
       Test: `contrib/testnet/dns_withdraw_test.py`.
-    - (node policy, 25 Oct 2026 review) DNS checkpoint sets carry a serial number, a
-      `serial:N` TXT record beside the `height:hash` ones (older nodes skip it). An enforcing
-      node remembers the highest serial it has seen (`dns_checkpoint_serial` in its data
-      folder, so it survives restarts) and refuses a set with a lower serial, or without one
-      once it has seen one, keeping its current checkpoints. DNSSEC proves a set was signed,
-      not that it is current, so without this a replayed older answer could lift an emergency
+    - (node policy, 25 Oct 2026 reviews) DNS checkpoint sets carry a serial number, a
+      `serial:N` TXT record beside the `height:hash` ones (older nodes skip it). A node
+      refuses, keeping its current checkpoints:
+      - a set with a serial lower than the highest it has seen, or without one once it has
+        seen one;
+      - the same serial with different records;
+      - an unusable serial: anything but 1–19 digits, more than one serial record, or more
+        than a day in the future.
+
+      It saves the highest serial and the records accepted with it in `dns_checkpoint_serial`
+      in its data folder, in warn-only mode too. An enforcing node restarts with that set in
+      force. A saved serial more than a day ahead is ignored.
+      `coin_network::dns_checkpoint_min_serial` is a per-release floor for nodes with no
+      history, set by `make_genesis.py apply` and raised in each release.
+
+      DNSSEC proves a set was signed, not that it is current, so without this a replayed
+      older answer, or one signed while the zone was being edited, could lift an emergency
       checkpoint and return the node to a chain it refused.
     - (node policy) the kept-chain check looks only at real tips (side blocks heavier than the
       main chain that no other side block builds on), skips a tip that failed the checkpoints
-      in force until they change, and does nothing when no side block was added and the
-      checkpoints are unchanged since the last look found nothing.
+      in force until they change, and does nothing when the checkpoints and a fingerprint of
+      the side-block ids are unchanged, and the main chain is no lighter, since a look that
+      found nothing.
     - (RPC) `get_outs` reads an output's transaction to set `dev_fund` only when its unlock
       time is its height + 60 blocks, which consensus requires of every coinbase output, so
       ordinary outputs cost no extra read.

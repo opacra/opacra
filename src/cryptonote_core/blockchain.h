@@ -1238,12 +1238,15 @@ namespace cryptonote
     // (dns_checkpoint_serial) so a restart doesn't forget it; older answers are refused
     uint64_t m_dns_serial_seen = 0;
     bool m_dns_serial_loaded = false;
-    uint64_t m_dns_serial_refused_logged = 0;
+    std::map<uint64_t, crypto::hash> m_dns_serial_points; // the records accepted with m_dns_serial_seen
+    bool m_dns_serial_points_known = false;
+    std::string m_dns_refusal_logged;
     // Opacra (25 Oct 2026 review): kept-chain tips that failed the checkpoints in force when they
     // were last tried, so they aren't walked again until the checkpoints change
     std::map<uint64_t, crypto::hash> m_kept_failed_points;
     std::unordered_set<crypto::hash> m_kept_failed_tips;
-    uint64_t m_kept_last_alt_count = 0;
+    crypto::hash m_kept_last_fingerprint = crypto::null_hash;
+    difficulty_type m_kept_last_main_cd = 0;
     bool m_kept_nothing_to_try = false;
 
     HardFork *m_hardfork;

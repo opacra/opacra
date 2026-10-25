@@ -182,6 +182,18 @@ namespace cryptonote
     uint64_t get_dns_serial() const { return m_dns_serial; }
 
     /**
+     * @brief Opacra: true if the DNS records carried an unusable serial: not a plain number
+     * of at most 19 digits (so "-1" and "+5" are refused), or more than one serial record.
+     * The caller also refuses a serial more than a day in the future.
+     */
+    bool dns_serial_bad() const { return m_dns_serial_bad; }
+
+    /**
+     * @brief Opacra: the serial record's text as published (for the log), at most 40 characters
+     */
+    const std::string& dns_serial_text() const { return m_dns_serial_text; }
+
+    /**
      * @brief gets the difficulty checkpoints container
      *
      * @return a const reference to the difficulty checkpoints container
@@ -248,6 +260,8 @@ namespace cryptonote
     std::map<uint64_t, crypto::hash> m_dns_points; //!< DNS checkpoints (replaced on each successful read)
     std::map<uint64_t, difficulty_type> m_difficulty_points; //!< the difficulty checkpoints container
     uint64_t m_dns_serial = 0; //!< the "serial:N" record read with the DNS checkpoints, 0 if none
+    bool m_dns_serial_bad = false; //!< the serial record wasn't a plain number, or there were several
+    std::string m_dns_serial_text; //!< the serial record's value as published (truncated)
   };
 
 }

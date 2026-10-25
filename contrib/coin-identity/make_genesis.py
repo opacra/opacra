@@ -38,6 +38,7 @@ import coinid  # noqa: E402
 CONFIG = ROOT / "src" / "cryptonote_config.h"
 HARDFORKS = ROOT / "src" / "hardforks" / "hardforks.cpp"
 CHECKPOINTS = ROOT / "src" / "checkpoints" / "checkpoints.cpp"
+COIN_NETWORK = ROOT / "src" / "coin_network.h"
 GENESIS_REWARD = (10_000_000 * 10 ** 12) >> 22   # MONEY_SUPPLY >> EMISSION_SPEED_FACTOR_PER_BLOCK
 RPC_PORT = {"mainnet": 29961, "testnet": 29971}
 FLAG = {"mainnet": [], "testnet": ["--testnet"]}
@@ -66,6 +67,15 @@ def apply(a):
     if not msg or len(msg.encode()) > 255:
         sys.exit("The message must be 1-255 bytes (it is stored in the genesis block).")
     t = calendar.timegm(time.strptime(a.launch, "%Y-%m-%d %H:%M"))
+    # the lowest DNS checkpoint serial this release accepts: now, before any record of the new
+    # chain exists, so a node with no history refuses every older (replayed) record set
+    min_serial = int(time.time())
+    cn = COIN_NETWORK.read_text()
+    cn, n6 = re.subn(r"(case cryptonote::%s: return )\d+(;\s*// dns min serial \(make_genesis\.py\))"
+                     % ("MAINNET" if a.network == "mainnet" else "TESTNET"),
+                     lambda m: m.group(1) + str(min_serial) + m.group(2), cn, count=1)
+    if n6 != 1:
+        sys.exit("Could not find the %s DNS min serial line in %s" % (a.network, COIN_NETWORK))
     text = CONFIG.read_text()
     check_constants(text)
     tx, out_key, tx_pub = coinid.genesis_tx(GENESIS_REWARD, msg)
@@ -103,6 +113,7 @@ def apply(a):
     end = cp.index("\n    }\n", k)
     block, n5 = re.subn(r"\n?[ \t]*ADD_CHECKPOINT2\([^;]*\);[^\n]*", "", cp[k:end])
     CHECKPOINTS.write_text(cp[:k] + block.lstrip("\n") + cp[end:] if n5 else cp)
+    COIN_NETWORK.write_text(cn)
 
     print("Network:        %s" % a.network)
     print("Message:        %s" % msg)
@@ -111,6 +122,8 @@ def apply(a):
     print("Output key:     %s (derived from the message: nobody holds its secret key)" % out_key)
     print("Launch time:    %s UTC (%d) written into the fork table" % (a.launch, t))
     print("Checkpoints:    %d old %s checkpoint(s) removed from checkpoints.cpp" % (n5, a.network))
+    print("DNS min serial: %d written into coin_network.h; publish the genesis record with serial:$(date +%%s) at launch"
+          % min_serial)
     print("                consensus: no block 1 before this; mining works from 3 minutes before it")
     if t > time.time() + 2 * 86400:
         print("WARNING: the launch time is more than 2 days away; nobody can mine this chain until then")

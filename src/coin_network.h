@@ -78,6 +78,22 @@ namespace coin_network
   // 5 minutes. Two small TXT lookups per node every 5 minutes are negligible.
   constexpr int64_t dns_checkpoint_refresh_seconds = 300;
 
+  // The lowest DNS checkpoint serial ("serial:N" record, a Unix time) this release accepts. A
+  // node remembers the highest serial it has seen and refuses older record sets, but a new
+  // install, a reset data folder or a node that just switched enforcement on has no history:
+  // this floor stops it trusting a replayed answer from before the release. make_genesis.py
+  // apply sets the launched network's value; raise it in every later release to the serial
+  // published when the release is built (docs/LAUNCH_CHECKLIST.md).
+  inline uint64_t dns_checkpoint_min_serial(cryptonote::network_type nettype)
+  {
+    switch (nettype)
+    {
+      case cryptonote::MAINNET: return 0;  // dns min serial (make_genesis.py)
+      case cryptonote::TESTNET: return 1792925883;  // dns min serial (make_genesis.py)
+      default:                  return 0;
+    }
+  }
+
   // DNSSEC-signed TXT records announcing releases "<software>:<buildtag>:<version>:<sha256>"
   inline std::vector<std::string> update_dns_domains() { return {}; }
 

@@ -37,6 +37,7 @@
 #include "serialization/keyvalue_serialization.h"
 #include <boost/system/error_code.hpp>
 #include <boost/filesystem.hpp>
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <functional>
@@ -342,10 +343,18 @@ namespace cryptonote
         // checkpoint (older nodes skip it: "serial" doesn't parse as a height)
         if (record.compare(0, pos, "serial") == 0)
         {
-          uint64_t serial = 0;
-          std::stringstream ss(record.substr(pos + 1));
-          if (ss >> serial && ss.eof())
-            m_dns_serial = std::max(m_dns_serial, serial);
+          // only plain digits, at most 19 (so it fits in 64 bits): "-1" or "+5" would otherwise
+          // parse as huge values, and a node that saved one would refuse every later set for
+          // good (25 Oct 2026 review). More than one serial record makes the set unusable too.
+          const std::string v = record.substr(pos + 1);
+          const bool digits = !v.empty() && v.size() <= 19 &&
+            std::all_of(v.begin(), v.end(), [](char c) { return c >= '0' && c <= '9'; });
+          if (!m_dns_serial_text.empty() || !digits)
+            m_dns_serial_bad = true;
+          else
+            m_dns_serial = std::stoull(v);
+          if (m_dns_serial_text.empty())
+            m_dns_serial_text = v.substr(0, 40);
           continue;
         }
 
