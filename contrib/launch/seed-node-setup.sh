@@ -85,6 +85,11 @@ else
     sed -i "s/^in-peers=128$/in-peers=1000/" "$NODECONF"
     echo "Raised in-peers from 128 to 1000 in $NODECONF" >&2
   fi
+  # and old logs are capped (Monero keeps 50 rotated logs of 100 MB)
+  if ! grep -q "^max-log-files=" "$NODECONF"; then
+    echo "max-log-files=3" >> "$NODECONF"
+    echo "Added max-log-files=3 to $NODECONF" >&2
+  fi
 fi
 chown -R opacra:opacra /var/lib/opacra
 # the service: the shipped unit, pointed at this network's config; the alert script it calls

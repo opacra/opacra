@@ -48,6 +48,8 @@ over. It runs exactly the rules planned for mainnet.
 - Seeds accept up to 1,000 incoming connections (was 128); the setup script raises existing
   seeds too.
 - `seed-node-setup.sh --no-start` installs or upgrades a seed without starting it.
+- Seeds keep 3 old logs instead of 50 (`max-log-files=3`, added to existing seeds by the
+  setup script). At the seeds' log level a log doesn't record where transactions came from.
 - `daily-checkpoint` requires `--network mainnet` or `--network testnet` and refuses nodes
   on another network.
 - The seed's phone alerts also report a rollback for a checkpoint and the return to the
