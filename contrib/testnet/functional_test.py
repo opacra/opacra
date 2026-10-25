@@ -20,6 +20,7 @@ import json
 import os
 import pathlib
 import re
+import signal
 import socket
 import statistics as st
 import subprocess
@@ -436,6 +437,8 @@ def main():
 
 
 if __name__ == "__main__":
+    # stopped from outside (kill, a timeout): still stop the nodes and wallets it started
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
     try:
         main()
     finally:
