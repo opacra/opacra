@@ -89,7 +89,7 @@ namespace coin_network
     switch (nettype)
     {
       case cryptonote::MAINNET: return 0;  // dns min serial (make_genesis.py)
-      case cryptonote::TESTNET: return 1792925883;  // dns min serial (make_genesis.py)
+      case cryptonote::TESTNET: return 1793023826;  // dns min serial (make_genesis.py)
       default:                  return 0;
     }
   }
