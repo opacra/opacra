@@ -3,6 +3,20 @@
 Mistakes and surprises from building and testing Opacra, each with the rule that stops it
 happening again. Newest first. Read this before a release, a drill or a launch step.
 
+## 26 Oct 2026: testnet 3 launch day
+
+Launched at 20:00 SAST (18:00 UTC) as planned; everything below was fixed the same evening.
+
+| What went wrong | Why | Rule from now on |
+|---|---|---|
+| The PC pulled an old bundle, and the site page was first built from an old copy | Windows saved the new downloads as `opacra-v026 (1).bundle` and `opacra-site-v15 (1).html` next to older files with the same names | Every file sent for a release gets a unique, dated name; check its size or hash before using it |
+| A stage name typed into a command ran into the next line, and the downloads came back empty | Pasting a value and a command block together on a server terminal | When Claude already knows a value, put it into the commands; otherwise set it alone on one line and `echo` it before use. `wget` without `-q`, so a 404 shows |
+| Seed 1's node stopped at start: "Failed to store HTTP SSL cert/key" | The runbook re-created `/var/lib/opacra/testnet3` as root (`install -d` for the explorer's `lmdb` folder), so the node, running as `opacra`, could not write its RPC certificate there | Create node data folders owned by `opacra` (`install -d -o opacra -g opacra` on the network folder itself), and test the install steps exactly as the runbook gives them |
+| Both seeds ignored the new DNS records until restarted | They first asked at T, before the records existed, and the node's resolver kept that "no such record" answer | Restart the seeds once the records answer (`dig`), and check `dns_checkpoint_serial`; next release: cap how long the node remembers a "no record" answer |
+| The Windows launcher refused every new wallet's address and closed | The wallet writes the address with no line ending; `findstr /x` only matches a line that ends in one. The launcher test only used short addresses ending in CRLF | Test with the real artifact (a real wallet's file), not a stand-in. Fixed and the zip re-issued that evening |
+| The seeds' alert kept saying "checkpoints unreadable" after they had accepted the records | The node logs nothing when the only record is block 0, so the alert script, which reads the log, never saw a recovery | Next release: log the first successful read of each set. Until the first daily checkpoint, check `dns_checkpoint_serial` instead |
+| "What serial number?" at the busiest moment | The step said "the number from `date +%s`" instead of giving it | At launch steps, give exact values, not instructions to make them |
+
 ## 25 Oct 2026: review of the 24 Oct update
 
 | What went wrong | Why | Rule from now on |
