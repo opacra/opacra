@@ -67,6 +67,9 @@ Ported from Monero's development branch, or found while testing it:
   and exchanges follow them from the start. The launchers will follow them by default in a
   later release, once the two checkpoint domains are held at separate registrars.
 - The Windows launcher refuses a wallet address file with more than one line.
+- The Windows launcher accepts the address file exactly as a new wallet writes it, with no
+  line ending. The first v0.2.6 Windows download (26 Oct, before 20:30 SAST) refused it and
+  closed; the zip was re-issued that evening with this fix and new signed checksums.
 
 ### For seed and node operators
 

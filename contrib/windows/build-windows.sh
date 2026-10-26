@@ -71,9 +71,14 @@ rem Exactly one line: findstr passes if any line matches, while set /p reads the
 set "LINES=0"
 for /f "usebackq delims=" %%L in ("testnet-wallet.address.txt") do set /a LINES+=1 >nul
 if not "!LINES!"=="1" goto badaddress
-findstr /r /x "T[0-9A-Za-z]*" testnet-wallet.address.txt >nul || goto badaddress
 set "ADDR="
 set /p "ADDR=" < testnet-wallet.address.txt
+if not defined ADDR goto badaddress
+rem The wallet writes the address with no line ending, and findstr /x only matches a line that
+rem ends in one, so check a copy that has it. Delayed expansion writes the value as plain text.
+> "%TEMP%\opacra-address-check.txt" echo(!ADDR!
+findstr /r /x "T[0-9A-Za-z]*" "%TEMP%\opacra-address-check.txt" >nul || goto badaddress
+del "%TEMP%\opacra-address-check.txt" >nul 2>&1
 rem To choose how many CPU threads mine, put a number after the = sign on the next line,
 rem for example  set MINE_THREADS=4  . Leave it empty to use a quarter of this PC's threads.
 set MINE_THREADS=
