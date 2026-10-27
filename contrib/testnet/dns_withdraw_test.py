@@ -175,6 +175,10 @@ def main():
     d.wait_ready(180)
     wait(lambda: "can be read again" in (D / "node.log").read_text() or d.height() == H0, 30)
     check(d.height() == H0, "restarted without --offline, reading the test DNS records", f"height {d.height()}")
+    # launch day publishes only the genesis record (block 0): the node must still log that it read
+    # it, or the seed's alert keeps reporting the checkpoints as unreadable (27 Oct 2026)
+    ok = wait(lambda: "DNS checkpoint enforced: block 0 = " in (D / "node.log").read_text(errors="replace"), 30)
+    check(ok, "a set with only the genesis record is logged as enforced (block 0)")
     pid0 = node.pid
     log(f"chain: {H0} blocks, tip {tip0[:16]}…, mining stopped")
 

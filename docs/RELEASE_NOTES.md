@@ -3,6 +3,28 @@
 What changed in each release, for users, miners and node operators. Technical details
 are in `docs/OPACRA_SPEC.md` (section 5).
 
+## v0.2.6.1 (testnet 3 fixes)
+
+The same chain and the same rules as v0.2.6: no new wallet or folder needed. Replace the
+programs and restart. These fixes come from testnet 3's first day.
+
+- **Windows nodes keep their saved DNS checkpoint serial up to date.** In v0.2.6 only the
+  first save worked on Windows (the file could not be replaced), so a Windows node that
+  enforces checkpoints would restart with an older saved set. Linux nodes were not affected.
+- **New DNS records are picked up within about a minute.** A node that asked before the
+  records existed, as seeds do at a launch, remembered the "no such record" answer for up to
+  an hour; it now keeps it for at most a minute.
+- **The node logs its first successful checkpoint read**, also when the only record is the
+  genesis block. Before, the seeds' alert kept reporting the checkpoints as unreadable until
+  the first daily checkpoint.
+- **The seed alert no longer calls a young chain "much too slow".** It ignores block-rate
+  windows that reach back before block 1.
+- **The Windows launcher** accepts the address file exactly as a new wallet writes it (this
+  fix already went into the re-issued v0.2.6 Windows download).
+
+Tests added: `contrib/testnet/alert_rate_test.py`; `dns_withdraw_test.py` checks the
+genesis-only log line.
+
 ## v0.2.6 (testnet 3)
 
 Testnet 3 is a new chain. Use a new folder and a new wallet; nothing from testnet 2 carries
@@ -72,10 +94,6 @@ Ported from Monero's development branch, or found while testing it:
   closed; the zip was re-issued that evening with this fix and new signed checksums.
 
 ### For seed and node operators
-
-- Windows nodes now keep their saved DNS checkpoint serial up to date. In v0.2.6 only the
-  first save worked on Windows (the file could not be replaced), so a Windows node that
-  enforces checkpoints would restart with an older saved set. Linux nodes were not affected.
 
 - Seeds accept up to 1,000 incoming connections (was 128); the setup script raises existing
   seeds too.

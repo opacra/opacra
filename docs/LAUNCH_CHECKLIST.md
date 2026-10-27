@@ -99,7 +99,7 @@ python3 coinid.py genesis --reward 2384185791015 \
 - [ ] Before every release, the full test gate on one build (re-run `cmake` first, so the
       version line each test prints names the commit under test): `opacra_consensus_tests`,
       `dns_withdraw_test.py`, `checkpoint_rollback_test.py`, `block_rules_test.py`,
-      `decoy_test.py`, `clock_step_test.py` and `functional_test.py`, with `BIN=` set to
+      `decoy_test.py`, `clock_step_test.py`, `alert_rate_test.py` and `functional_test.py`, with `BIN=` set to
       that build's `bin` folder (the rollback and decoy tests use `build/portable`). Check each test's first line shows that
       folder and commit.
 - [ ] Run `opacra-audit` on the testnet 3 seed weekly, and log each result in

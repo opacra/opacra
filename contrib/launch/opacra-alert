@@ -177,6 +177,18 @@ def on_block_rate(window, blocks, expected):
     window, blocks, expected = int(window), int(blocks), int(expected)
     fast = blocks > expected
     log("block rate: %d blocks in %d minutes, %d expected" % (blocks, window, expected))
+    # Opacra (27 Oct 2026, testnet 3 launch): opacrad counts blocks over the whole window even
+    # when the chain is younger than it, so a new chain looked "much too slow" for its first
+    # 90 minutes. Ignore windows that reach back before block 1.
+    try:
+        born = int(rpc("get_block_header_by_height", {"height": 1})["block_header"]["timestamp"])
+    except RuntimeError:
+        born = now()  # the node answered that there is no block 1 yet: the chain hasn't started
+    except Exception:
+        born = None   # the node didn't answer: judge the rate as before
+    if born is not None and now() - born < window * 60:
+        log("block rate: the chain is younger than the %d-minute window; ignored" % window)
+        return
     kind = "fast" if fast else "slow"
     t = now()
     with State() as s:

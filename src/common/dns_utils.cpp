@@ -259,6 +259,16 @@ static void add_anchors(ub_ctx *ctx)
   }
 }
 
+// Opacra (27 Oct 2026, testnet 3 launch): libunbound remembers a "no such record" answer for up
+// to an hour by default. Seeds start at launch before the checkpoint records exist, so they kept
+// ignoring the records until restarted. Remember "no record" for at most a minute instead.
+static void limit_negative_cache(ub_ctx *ctx)
+{
+  const int r = ub_ctx_set_option(ctx, string_copy("cache-max-negative-ttl:"), string_copy("60"));
+  if (r != 0)
+    MERROR("Failed to limit the DNS negative cache: " << ub_strerror(r));
+}
+
 DNSResolver::DNSResolver() : m_data(new DNSResolverData())
 {
   int use_dns_public = 0;
@@ -280,6 +290,7 @@ DNSResolver::DNSResolver() : m_data(new DNSResolverData())
 
   // init libunbound context
   m_data->m_ub_context = ub_ctx_create();
+  limit_negative_cache(m_data->m_ub_context);
 
   if (use_dns_public)
   {
@@ -309,6 +320,7 @@ DNSResolver::DNSResolver() : m_data(new DNSResolverData())
       MINFO("Failed to verify DNSSEC record from " << probe_hostname << ", falling back to TCP with well known DNSSEC resolvers");
       ub_ctx_delete(m_data->m_ub_context);
       m_data->m_ub_context = ub_ctx_create();
+      limit_negative_cache(m_data->m_ub_context);
       add_anchors(m_data->m_ub_context);
       for (const auto &ip: DEFAULT_DNS_PUBLIC_ADDR)
         ub_ctx_set_fwd(m_data->m_ub_context, string_copy(ip));
