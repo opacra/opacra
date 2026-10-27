@@ -266,7 +266,8 @@ static void limit_negative_cache(ub_ctx *ctx)
 {
   const int r = ub_ctx_set_option(ctx, string_copy("cache-max-negative-ttl:"), string_copy("60"));
   if (r != 0)
-    MERROR("Failed to limit the DNS negative cache: " << ub_strerror(r));
+    // "global", so seeds see it at log level 0 (which hides net.dns errors)
+    MCLOG_RED(el::Level::Error, "global", "Failed to limit the DNS negative cache: " << ub_strerror(r));
 }
 
 DNSResolver::DNSResolver() : m_data(new DNSResolverData())
