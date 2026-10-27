@@ -16,6 +16,7 @@ Launched at 20:00 SAST (18:00 UTC) as planned; everything below was fixed the sa
 | The Windows launcher refused every new wallet's address and closed | The wallet writes the address with no line ending; `findstr /x` only matches a line that ends in one. The launcher test only used short addresses ending in CRLF | Test with the real artifact (a real wallet's file), not a stand-in. Fixed and the zip re-issued that evening |
 | The seeds' alert kept saying "checkpoints unreadable" after they had accepted the records | The node logs nothing when the only record is block 0, so the alert script, which reads the log, never saw a recovery | Next release: log the first successful read of each set. Until the first daily checkpoint, check `dns_checkpoint_serial` instead |
 | "What serial number?" at the busiest moment | The step said "the number from `date +%s`" instead of giving it | At launch steps, give exact values, not instructions to make them |
+| A Windows miner logged "Could not save the DNS checkpoint serial" at the first daily checkpoint | `std::rename` replaces an existing file on Linux but fails on Windows; every test runs on Linux, and on launch night the file didn't exist yet, so the first save worked | File writes that replace a file use a cross-platform call (`boost::filesystem::rename`, `tools::replace_file`). Anything that persists state is checked on Windows too, over at least two saves |
 
 ## 25 Oct 2026: review of the 24 Oct update
 

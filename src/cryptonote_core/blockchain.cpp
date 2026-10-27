@@ -5423,8 +5423,12 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
       for (const auto &pt : m_dns_serial_points)
         out << pt.first << ":" << epee::string_tools::pod_to_hex(pt.second) << "\n";
     }
-    if (std::rename(tmp.c_str(), serial_file.c_str()) != 0)
-      MERROR("Could not save the DNS checkpoint serial to " << serial_file);
+    // Opacra (27 Oct 2026, testnet 3): std::rename fails on Windows when the target exists, so
+    // every save after the first failed there; boost's rename replaces the file on every OS
+    boost::system::error_code ec;
+    boost::filesystem::rename(tmp, serial_file, ec);
+    if (ec)
+      MERROR("Could not save the DNS checkpoint serial to " << serial_file << ": " << ec.message());
   };
   if (read_dns && !dns_points.get_points().empty())
   {

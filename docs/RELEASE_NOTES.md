@@ -73,6 +73,10 @@ Ported from Monero's development branch, or found while testing it:
 
 ### For seed and node operators
 
+- Windows nodes now keep their saved DNS checkpoint serial up to date. In v0.2.6 only the
+  first save worked on Windows (the file could not be replaced), so a Windows node that
+  enforces checkpoints would restart with an older saved set. Linux nodes were not affected.
+
 - Seeds accept up to 1,000 incoming connections (was 128); the setup script raises existing
   seeds too.
 - `seed-node-setup.sh --no-start` installs or upgrades a seed without starting it.
