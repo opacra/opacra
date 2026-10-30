@@ -1229,9 +1229,9 @@ namespace cryptonote
 
     checkpoints m_checkpoints;
     bool m_enforce_dns_checkpoints;
-    // Opacra: highest DNS checkpoint height last reported in the log (0 = none yet)
-    // Opacra (27 Oct 2026): starts as "nothing logged" (max), so a set whose highest record is
-    // block 0 (launch day: the genesis record only) is logged too; it started at 0 and never was
+    // Opacra: highest DNS checkpoint height last reported in the log; starts as "nothing logged"
+    // (max), so a set whose highest record is block 0 (launch day: the genesis record only) is
+    // logged too (27 Oct 2026; it started at 0, and block 0 was never logged)
     uint64_t m_last_logged_dns_checkpoint;
     // Opacra: an enforcing node has already warned that no DNS checkpoint could be read
     bool m_dns_checkpoints_missing;

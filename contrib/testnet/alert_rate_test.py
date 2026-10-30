@@ -3,7 +3,8 @@
 
 Loads contrib/launch/opacra-alert with the node, clock and phone simulated, and checks the
 block-rate handler: a chain younger than the window, or with no block 1 yet, raises no alert;
-an old chain, or a node that does not answer, still does.
+an old chain, a node that does not answer, or one that answers with another error,
+still does.
 
   python3 contrib/testnet/alert_rate_test.py [path to opacra-alert]
 Standard library only. Exit code 0 when every check passes.
@@ -62,11 +63,16 @@ def down(method, params=None):
     raise OSError("connection refused")
 
 
+def other_error(method, params=None):
+    raise RuntimeError({"code": -1, "message": "internal error"})
+
+
 results = [
     case("chain 38 minutes old: no alert", header(38 * 60), False),
     case("no block 1 yet: no alert", no_block, False),
     case("chain 3 hours old: alert", header(3 * 3600), True),
     case("node not answering: alert as before", down, True),
+    case("node answers another error: alert as before", other_error, True),
 ]
 print("ALL CHECKS PASSED" if all(results) else "SOME CHECKS FAILED")
 sys.exit(0 if all(results) else 1)

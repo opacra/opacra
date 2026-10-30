@@ -5382,6 +5382,13 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
           MCLOG_RED(el::Level::Warning, "global", "Ignoring the saved DNS checkpoint serial " << saved << ": it is beyond the year 2100");
           ok = false;
         }
+        else if (!ok && in.is_open())
+        {
+          // Opacra (30 Oct 2026 review): a saved file that exists but can't be read (cut short,
+          // emptied by a full disk, edited by hand) used to be dropped silently
+          MCLOG_RED(el::Level::Error, "global", "The saved DNS checkpoints in " << serial_file << " could not be read: starting "
+            "without them, from this release's minimum serial, until DNS answers (see docs/EMERGENCY_CHECKPOINTS.md)");
+        }
         if (ok && saved >= m_dns_serial_seen)
         {
           m_dns_serial_seen = saved;
@@ -5422,13 +5429,26 @@ bool Blockchain::update_checkpoints(const std::string& file_path, bool check_dns
       out << new_serial << "\n";
       for (const auto &pt : m_dns_serial_points)
         out << pt.first << ":" << epee::string_tools::pod_to_hex(pt.second) << "\n";
+      // Opacra (30 Oct 2026 review): a write error (a full disk) shows up only when the file is
+      // closed; renaming that file over the saved one replaced a good set with an empty one.
+      // Check the write first, and keep the saved file when it failed (the running node already
+      // holds the new set in memory, above)
+      out.close();
+      if (!out)
+      {
+        MCLOG_RED(el::Level::Error, "global", "Could not write the DNS checkpoint serial to " << tmp << " (disk full?); keeping "
+          << serial_file << " as it was");
+        boost::system::error_code rm_ec;
+        boost::filesystem::remove(tmp, rm_ec);
+        return;
+      }
     }
     // Opacra (27 Oct 2026, testnet 3): std::rename fails on Windows when the target exists, so
     // every save after the first failed there; boost's rename replaces the file on every OS
     boost::system::error_code ec;
     boost::filesystem::rename(tmp, serial_file, ec);
     if (ec)
-      MERROR("Could not save the DNS checkpoint serial to " << serial_file << ": " << ec.message());
+      MCLOG_RED(el::Level::Error, "global", "Could not save the DNS checkpoint serial to " << serial_file << ": " << ec.message());
   };
   if (read_dns && !dns_points.get_points().empty())
   {

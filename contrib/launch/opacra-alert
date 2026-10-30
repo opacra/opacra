@@ -182,8 +182,12 @@ def on_block_rate(window, blocks, expected):
     # 90 minutes. Ignore windows that reach back before block 1.
     try:
         born = int(rpc("get_block_header_by_height", {"height": 1})["block_header"]["timestamp"])
-    except RuntimeError:
-        born = now()  # the node answered that there is no block 1 yet: the chain hasn't started
+    except RuntimeError as e:
+        # only "height too big" (-2, CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT) means there is no block 1
+        # yet; any other error is treated like no answer, so it can't silence this alert (30 Oct
+        # 2026 review)
+        err = e.args[0] if e.args else None
+        born = now() if isinstance(err, dict) and err.get("code") == -2 else None
     except Exception:
         born = None   # the node didn't answer: judge the rate as before
     if born is not None and now() - born < window * 60:

@@ -345,7 +345,7 @@ namespace config
     // Opacra testnet 3: mainnet's exact rules (no slow start, no testnet exemptions) on a
     // fresh chain. Network ID and genesis come from contrib/coin-identity/make_genesis.py,
     // the launch-day procedure, so testnet 2 and earlier nodes never connect to it.
-    // (The values below are from the 18 Oct 2026 practice run; replaced on launch day.)
+    // (The values below are testnet 3's, set by make_genesis.py on its launch day, 26 Oct 2026.)
     boost::uuids::uuid const NETWORK_ID = { {
         0x14, 0x73, 0xE7, 0xC4, 0x85, 0x6C, 0x02, 0x8D, 0xEF, 0xEF, 0xF8, 0xE9, 0xC4, 0xB1, 0x56, 0x01
       } };

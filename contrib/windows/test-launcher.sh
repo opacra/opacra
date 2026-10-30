@@ -35,6 +35,8 @@ run() {  # name, address file contents, expect "start" or "refuse" [, "enforce" 
   out=$(cd "$DIR" && echo | timeout 60 cmd.exe /c run.bat 2>&1 | tr -d '\r' || true)
   started=no; echo "$out" | grep -q "NODE-ARGS" && started=yes
   pwned=no; [ -e "$DIR/pwned.txt" ] && pwned=yes
+  # the launcher's scratch copy of the address must be gone afterwards, also when it was refused
+  leftover=no; [ -e "$(wslpath "$WINTMP")/opacra-address-check.txt" ] && leftover=yes
   if [ "$3" = start ]; then
     ok=$([ $started = yes ] && echo "$out" | grep -q -- "--start-mining \"$2\"" && echo yes || echo no)
     enforced=no; echo "$out" | grep -q -- "--enforce-dns-checkpointing" && enforced=yes
@@ -44,8 +46,9 @@ run() {  # name, address file contents, expect "start" or "refuse" [, "enforce" 
   else
     ok=$([ $started = no ] && [ $pwned = no ] && echo yes || echo no)
   fi
+  [ $leftover = no ] || ok=no
   [ $ok = yes ] || FAILS=$((FAILS + 1))
-  printf '%s %-34s node started: %-3s  injected command ran: %-3s  enforces: %s\n' "$([ $ok = yes ] && echo PASS || echo FAIL)" "$1" "$started" "$pwned" "${enforced:-no}"
+  printf '%s %-34s node started: %-3s  injected command ran: %-3s  enforces: %-3s  temp file left: %s\n' "$([ $ok = yes ] && echo PASS || echo FAIL)" "$1" "$started" "$pwned" "${enforced:-no}" "$leftover"
 }
 run "good address" "TeGood123abcXYZ" start
 run "address with a command in it" "Te12&echo PWNED>pwned.txt" refuse

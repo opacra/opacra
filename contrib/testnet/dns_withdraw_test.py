@@ -363,7 +363,11 @@ def main():
         return (D / "node.log").read_text(errors="replace").count(text)
 
     def saved_serial():
-        return list((D / "node").rglob("dns_checkpoint_serial"))[0].read_text().split()[0]
+        path = list((D / "node").rglob("dns_checkpoint_serial"))[0]
+        if path.is_symlink():   # scenario 14 on a node without the fix: the /dev/full link took its place
+            return ""
+        words = path.read_text().split()
+        return words[0] if words else ""
 
     # 12. a set that conflicts with a checkpoint in checkpoints.json is ignored and not saved, so
     #     a restart keeps the emergency set that was really in force (the reviewer's test)
@@ -408,6 +412,59 @@ def main():
     restart()                             # clock right again
     publish(G)
     back_to_full_chain("withdrawn once the clock is right")
+
+    # 14. a full disk while saving keeps the saved set as it was (it used to replace it with an
+    #     empty file, so a restart lost an emergency checkpoint), and a saved file that exists but
+    #     can't be read is logged in red. The temporary file is pointed at /dev/full, which fails
+    #     every write with "no space left on device", the same error a full disk gives, without
+    #     needing a small filesystem mounted.
+    serial_path = next((D / "node").rglob("dns_checkpoint_serial"))
+    tmp_path = serial_path.with_name("dns_checkpoint_serial.tmp")
+    forged = f"1:{secrets.token_hex(32)}"
+    publish(G, forged)
+    ok = wait(lambda: d.height() == 1, 60)
+    check(ok, "emergency record at block 1: rolled back to the genesis block", f"height {d.height()}")
+    ok = wait(lambda: saved_serial() == str(serial[0]), 30)
+    check(ok, "the emergency set is saved", f"saved {saved_serial()}")
+    in_force = serial_path.read_bytes()
+    tmp_path.symlink_to("/dev/full")
+    full0 = log_count("Could not write the DNS checkpoint serial")
+    publish(G, forged)                    # a newer serial, same records: the node tries to save it
+    ok = wait(lambda: log_count("Could not write the DNS checkpoint serial") > full0, 60)
+    check(ok, "disk full while saving: logged in red")
+    # without the fix the node renames the failed temporary file over the saved one: here that is
+    # the /dev/full link itself (never read it: it is endless), on a real full disk an empty file
+    replaced = serial_path.is_symlink()
+    kept = serial_path.read_bytes() if not replaced else b""
+    check(kept == in_force, "disk full while saving: the saved set is kept as it was",
+          "replaced by the failed temporary file" if replaced else f"{len(kept)} bytes")
+    if replaced:
+        serial_path.unlink()
+        serial_path.write_text("")        # what a real full disk leaves
+    check(not os.path.lexists(tmp_path), "disk full while saving: the temporary file is removed")
+    if os.path.lexists(tmp_path):
+        tmp_path.unlink()
+    check(node.poll() is None and d.height() == 1, "disk full while saving: the node keeps running, set in force",
+          f"height {d.height()}")
+    restored0 = log_count("restored from the last accepted set")
+    restart()
+    time.sleep(15)
+    check(log_count("restored from the last accepted set") > restored0 and d.height() == 1,
+          "after a restart the kept set is restored and in force", f"height {d.height()}")
+    ok = wait(lambda: saved_serial() == str(serial[0]), 60)
+    check(ok, "saving works again once there is space (the newer serial is saved)", f"saved {saved_serial()}")
+    publish(G)
+    back_to_full_chain("withdrawn after the full disk")
+
+    # an emptied saved file: the node starts without it, says so in red, and saves again from DNS
+    unread0 = log_count("could not be read: starting without them")
+    serial_path.write_text("")
+    restart()
+    ok = wait(lambda: log_count("could not be read: starting without them") > unread0, 30)
+    check(ok, "an empty saved file is logged in red at start")
+    check(on_full_chain(), "an empty saved file: the node starts normally on its chain", f"height {d.height()}")
+    ok = wait(lambda: saved_serial() == str(serial[0]), 60)
+    check(ok, "an empty saved file: the set read from DNS is saved again", f"saved {saved_serial() or 'nothing'}")
 
     log("ALL CHECKS PASSED" if FAILS == 0 else f"{FAILS} CHECK(S) FAILED")
     log(f"data: {D}")

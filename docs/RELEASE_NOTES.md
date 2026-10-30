@@ -19,11 +19,19 @@ programs and restart. These fixes come from testnet 3's first day.
   the first daily checkpoint.
 - **The seed alert no longer calls a young chain "much too slow".** It ignores block-rate
   windows that reach back before block 1.
+- **A full disk can't wipe the saved checkpoints.** If the node can't write its saved DNS
+  checkpoint serial (a full disk), it now keeps the file it had and logs the error in red;
+  before, it could replace it with an empty file, so a restart forgot an emergency checkpoint.
+  A saved file that exists but can't be read is also logged in red at start.
+- **The seed alert** counts only "no block 1 yet" as a young chain; any other error from the
+  node is reported as before.
 - **The Windows launcher** accepts the address file exactly as a new wallet writes it (this
-  fix already went into the re-issued v0.2.6 Windows download).
+  fix already went into the re-issued v0.2.6 Windows download), and removes its temporary
+  check file also when the address is refused.
 
 Tests added: `contrib/testnet/alert_rate_test.py`; `dns_withdraw_test.py` checks the
-genesis-only log line.
+genesis-only log line, a full disk while saving, and an unreadable saved file;
+`contrib/windows/test-launcher.sh` checks that no temporary file is left behind.
 
 ## v0.2.6 (testnet 3)
 

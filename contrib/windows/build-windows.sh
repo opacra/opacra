@@ -107,6 +107,7 @@ opacrad.exe --testnet %CHECKPOINTS% --start-mining "!ADDR!" --mining-threads %TH
 pause
 exit /b
 :badaddress
+del "%TEMP%\opacra-address-check.txt" >nul 2>&1
 echo.
 echo  testnet-wallet.address.txt does not hold an Opacra testnet address (letters and
 echo  digits only, starting with T). Copy the right file from your old Opacra folder, then
