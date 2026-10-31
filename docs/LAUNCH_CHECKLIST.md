@@ -1,0 +1,195 @@
+# Mainnet launch checklist
+
+Work through this in order. Anything marked **(consensus)** changes the chain identity
+or rules, and must be final before the first public binaries are published.
+
+## 0. Before writing any more code
+
+- [ ] Final name and ticker. Search CoinGecko, CoinMarketCap, miningpoolstats.stream,
+      GitHub and the trademark registers where you operate (for South Africa: CIPC)
+      for conflicts. Buy the domain(s).
+- [ ] Decide the legal wrapper (usually a non-profit foundation or a company that
+      publishes open-source software, not one that sells coins). Take legal advice on
+      your jurisdiction before launch; see the concept document for the key rules.
+- [ ] Create project accounts: GitHub organisation, website, X/Twitter, BitcoinTalk.
+
+## 1. Rename (if the name changes)
+
+```bash
+python3 contrib/coin-identity/rebrand.py --from Opacra --to NewName --ticker-from OPCA --ticker-to NEW
+```
+
+Then edit `COIN_NAME`, `COIN_TICKER` and `CRYPTONOTE_NAME` in `src/cryptonote_config.h`,
+and the `HASH_KEY_MESSAGE_SIGNING` string.
+
+## 2. Chain identity (consensus)
+
+```bash
+cd contrib/coin-identity
+python3 coinid.py prefix Pa          # standard address (Opacra: 30598)
+python3 coinid.py prefix Pi --integrated   # integrated (Opacra: 24839)
+python3 coinid.py prefix Ps          # subaddress (Opacra: 22408)
+python3 coinid.py network-id         # run 3x: mainnet, testnet, stagenet
+python3 coinid.py genesis --reward 2384185791015 \
+  --message "Opacra mainnet genesis | <date> | <a headline from that day's newspaper>"
+# The output key is a "nothing up my sleeve" point derived from the message, so the
+# genesis transaction is reproducible from the message alone and has no secret key.
+```
+
+- [ ] Put the prefixes, network IDs and genesis transactions into `src/cryptonote_config.h`.
+      The genesis `--reward` must stay `MONEY_SUPPLY >> EMISSION_SPEED_FACTOR_PER_BLOCK`
+      (2384185791015 with the current parameters) or the genesis block is rejected.
+- [ ] A newspaper headline in the genesis message proves no blocks were mined before that date,
+      **only if the genesis stays unknown until launch day**: make it that morning
+      (`contrib/coin-identity/make_genesis.py`) and publish nothing that reveals it, not the
+      source, the binaries or the genesis hash, before mining opens.
+- [ ] Set the time of the height-1 entry in each table in `src/hardforks/hardforks.cpp` to
+      the launch time (UTC epoch seconds; `make_genesis.py --launch` does this). It is a
+      consensus rule: every block after genesis must be dated
+      at or after it, so nodes accept block 1 from 3 minutes before it (the future time
+      limit) and a chain mined in secret can't carry earlier dates. Use the minute mining
+      opens, never later. Wallets also use it to estimate chain height.
+- [ ] Build, start a node once, and read the genesis hash:
+      `curl -s localhost:29961/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_block_header_by_height","params":{"height":0}}'`
+      Add `ADD_CHECKPOINT2(0, "<genesis hash>", "0x1");` in `src/checkpoints/checkpoints.cpp`.
+
+## 3. Network endpoints (`src/coin_network.h`)
+
+- [x] Two seed nodes on two continents: seed 1 169.58.62.247 (Contabo, Europe), seed 2
+      13.140.226.160 (Contabo, US East). Add a third seed at another company after launch.
+- [x] Their `ip:29960` are in `ip_seed_nodes(MAINNET)` (and `:29970` for testnet).
+- [ ] Optional: a DNS seed name (e.g. `seeds.yourcoin.org`) with one A record per seed,
+      DNSSEC enabled, listed in `dns_seed_domains()`.
+- [ ] Optional: a Tor onion service on one seed (`tor_seed_nodes()`), see
+      `docs/ANONYMITY_NETWORKS.md`.
+- [x] `checkpoint_dns_domains`: checkpoints.opacra.org + checkpoints.opacra.com (mainnet),
+      testpoints.opacra.org + testpoints.opacra.com (testnet). Both
+      zones are DNSSEC-signed in a dedicated 2FA registrar account. Leave `update_dns_domains`
+      and `blocklist_dns_domains` empty until they are needed.
+- [x] 51% protection: own RandomX variant (RandomOPCA); DNS emergency checkpoints
+      (`docs/EMERGENCY_CHECKPOINTS.md`), rehearsed on the testnet; seed alerts
+      (`docs/ALERTS.md`); hard-coded checkpoints in every release.
+- [x] Mainnet and testnet fund wallets created offline and set in `src/cryptonote_config.h`.
+      Stagenet uses a placeholder (stagenet is not run publicly).
+- [ ] Development fund (5% of every block): create one wallet per network on an offline
+      machine (`opacra-wallet-cli --generate-new-wallet devfund`, add `--testnet` for the
+      testnet one), write down the seed, and put each standard address and its secret
+      view key (`viewkey` command) into `DEV_FUND_ADDRESS` / `DEV_FUND_VIEW_KEY` in
+      `src/cryptonote_config.h`. The view keys are published so anyone can audit the fund
+      (audit wallets must scan coinbase outputs, i.e. not use `refresh-type no-coinbase`).
+      Changing the fund address after launch is a hard fork.
+- [ ] Optional community fund: a mainnet address in `OPACRA_DONATION_ADDR`
+      (`src/simplewallet/simplewallet.h`). Publish its view key so anyone can audit it.
+
+## 4. Public testnet
+
+- [ ] Build the release candidate, run 2–3 testnet seed nodes:
+      `bash seed-node-setup.sh <package> testnet` (P2P port 29970; see section 5).
+- [ ] Invite miners and developers; run the block explorer and pool against testnet.
+- [ ] Run `contrib/testnet/functional_test.py` on the release candidate.
+- [ ] Before every release, the full test gate on one build (re-run `cmake` first, so the
+      version line each test prints names the commit under test): `opacra_consensus_tests`,
+      `dns_withdraw_test.py`, `checkpoint_rollback_test.py`, `block_rules_test.py`,
+      `decoy_test.py`, `clock_step_test.py`, `alert_rate_test.py`, `relay_test.py` and `functional_test.py`, with `BIN=` set to
+      that build's `bin` folder (the rollback and decoy tests use `build/portable`). Check each test's first line shows that
+      folder and commit.
+- [ ] Run `opacra-audit` on the testnet 3 seed weekly, and log each result in
+      `docs/CHAIN_AUDIT.md`.
+- [x] Block-size constants scaled for 30 s blocks (`docs/OPACRA_SPEC.md`).
+- [ ] Fix, rebuild and restart testnet if anything changes.
+
+## 5. Seed nodes
+
+On each Ubuntu 24.04 VPS:
+
+```bash
+# on the seed, from the release package's launch-kit folder (it has every file needed):
+bash seed-node-setup.sh /root/opacra-v<version>-linux-x64.tar.gz testnet    # public testnet: service opacrad
+bash seed-node-setup.sh /root/opacra-v<version>-linux-x64.tar.gz mainnet    # mainnet: service opacrad-mainnet
+```
+
+One server runs several networks side by side; run the script once per network. Testnet
+keeps the original names (`opacrad`, `/etc/opacra/opacra.conf`, `/var/lib/opacra/opacra.log`,
+`opacra-alert`). Mainnet gets its own: `opacrad-mainnet`, `/etc/opacra/opacra-mainnet.conf`,
+data in `/var/lib/opacra/mainnet`, log `/var/lib/opacra/opacra-mainnet.log`, alerts in
+`/etc/opacra/alert-mainnet.conf` with the command `opacra-alert-mainnet status` (and it
+reuses the server's existing alert topic). All networks share the programs in `/opt/opacra`:
+after installing a new package for one network, restart the others too.
+
+The first seed prints a phone-alert topic (`docs/ALERTS.md`). On the other seeds give `-` as a
+third argument (`ssh -t`) and paste it when asked, so all seeds share one alert feed. A second
+network on the same server reuses the topic by itself. The seeds are built into the software
+(`src/coin_network.h`), so they find each other. Check with `journalctl -u opacrad -f`
+(mainnet: `-u opacrad-mainnet`).
+
+## 6. Release binaries
+
+- [ ] Today: `contrib/launch/package_release.sh` packages a portable Linux x86_64 build
+      (`-DARCH=x86-64`) with SHA256SUMS. It is not bit-for-bit reproducible.
+- [ ] Before mainnet: port Monero's reproducible build descriptors in `contrib/gitian`
+      (they still clone monero-project/monero and name files `monero-*`) to this
+      repository, for Linux x86_64/aarch64, Windows and macOS.
+- [ ] Two people build independently and compare hashes.
+- [ ] Publish `hashes.txt` signed with the release GPG key, and the source tag.
+- [ ] Raise `dns_checkpoint_min_serial` in `src/coin_network.h` for each released network to
+      the `serial:` currently published under its checkpoint record (`dig +short TXT
+      checkpoints.opacra.org`), so new installs refuse older, replayed answers.
+      `make_genesis.py apply` sets it for a network's launch.
+- [ ] Release notes (`docs/RELEASE_NOTES.md`) describe what changed for users, and reveal
+      nothing about the genesis. Check they match what the release actually does (for example
+      checkpoint enforcement in the launchers).
+
+## 7. Infrastructure before the first block
+
+- [ ] **Block explorer:** fork `moneroexamples/onion-monero-blockchain-explorer`, point
+      its CMake at this source tree, change network name and ports. Host at
+      `explorer.yourcoin.org`.
+- [ ] **Mining pool:** at least one pool at launch, ideally two operators. Options:
+      `jtgrassie/monero-pool` (C, lightweight) or a CryptoNote Node.js pool fork. Set
+      the address prefixes and 30 s block time in the pool config.
+- [ ] **Public nodes** with restricted RPC (`--rpc-restricted-bind-port`) for light wallets.
+- [ ] **Wallets:** CLI and RPC wallets ship with the release. For a GUI, fork
+      `monero-project/monero-gui` or Feather Wallet; for mobile, work with Cake Wallet or
+      a light-wallet server (`monero-lws` fork).
+- [ ] **Merchant plugin:** a BTCPay Server / WooCommerce plugin fork (the Monero plugins use
+      `monero-wallet-rpc`, which `opacra-wallet-rpc` replaces with the same API).
+
+## 8. Launch day
+
+1. T−7 days: announce the exact launch time (UTC). State clearly that there is **no
+   premine** and that 5% of every block goes to the development fund, with the fund's
+   address and view key. **Do not** publish the genesis, its hash, the release tag or
+   binaries: anyone who has the genesis can start mining in private. The
+   genesis is made from that morning's headline and goes public with the downloads at T
+   (the launch-day runbook).
+2. T−1 hour: seed nodes, explorer and pools installed and ready at height 0, but stopped
+   until T (a running seed would reveal the genesis hash to anyone who connects).
+   A node only allows mining (`start_mining`, `get_block_template`) once a peer has
+   reported a height at least equal to its own. Seeds connected to each other at the
+   genesis block satisfy this. A node that is alone, or ahead of every peer it can reach,
+   answers `BUSY` instead. Have at least two
+   seeds connected at T (start them within a minute of each other). To bootstrap a lone node anyway, start it with `--offline`,
+   then restart it normally once a peer has caught up.
+3. T: start the seeds, publish the downloads and the source, add the DNS record
+   `0:<genesis hash>` on both domains, and announce "mining is open". Full rewards from
+   block 1, and the time was announced a week ahead, so everyone could be ready.
+   About 30 minutes later, publish the first checkpoint record (`daily-checkpoint`), so
+   nodes lock in the first blocks quickly.
+4. Watch the explorer, `opacrad status` on all seeds and the phone alerts. Block times settle after about
+   60 blocks (30 minutes).
+5. After ~1 day: run `opacra-audit --rpc 127.0.0.1:29961` on a seed and publish the report;
+   post the first hard-coded checkpoint in the next point release
+   (`contrib/launch/make_checkpoint.sh <height>`).
+
+## 9. After launch
+- [ ] Watch outside changes the coin depends on, and ship updates before they bite: root DNSSEC
+      keys (IANA root-anchors.xml; KSK-2024 signs the root zone now), the Ubuntu and Windows
+      versions the releases target, Windows signing rules.
+- [ ] Monthly: on each seed, `DNS checkpoint enforced` is the newest checkpoint line in the log
+      (`docs/EMERGENCY_CHECKPOINTS.md`, Keep it ready), and `opacra-audit` passes.
+
+- [ ] Add a checkpoint every few thousand blocks in each release.
+- [ ] List on miningpoolstats.stream as soon as a pool is running.
+- [ ] Apply to CoinGecko / CoinMarketCap once there is a market with volume.
+- [ ] Network upgrades: append `{17, height, 0, time}` to the fork tables, ship binaries
+      at least 4–6 weeks before the height.

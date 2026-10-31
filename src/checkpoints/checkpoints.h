@@ -1,0 +1,267 @@
+// Copyright (c) 2014-2022, The Monero Project
+//
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without modification, are
+// permitted provided that the following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of
+//    conditions and the following disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list
+//    of conditions and the following disclaimer in the documentation and/or other
+//    materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be
+//    used to endorse or promote products derived from this software without specific
+//    prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+// MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+// THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
+// THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
+
+#pragma once
+#include <map>
+#include <string>
+#include "misc_log_ex.h"
+#include "crypto/hash.h"
+#include "cryptonote_config.h"
+#include "cryptonote_basic/difficulty.h"
+
+#define ADD_CHECKPOINT(h, hash)  CHECK_AND_ASSERT(add_checkpoint(h,  hash), false);
+#define ADD_CHECKPOINT2(h, hash, difficulty)  CHECK_AND_ASSERT(add_checkpoint(h,  hash, difficulty), false);
+#define JSON_HASH_FILE_NAME "checkpoints.json"
+
+
+namespace cryptonote
+{
+  /**
+   * @brief Opacra, tests only: the file named by OPACRA_TEST_DNS_CHECKPOINTS, read in place of
+   * the DNS checkpoint records (one "height:hash" record per line), or "" when unset. Never
+   * used on mainnet. Lets the tests publish, change and withdraw records without DNS.
+   */
+  std::string test_dns_records_file(network_type nettype);
+
+  /**
+   * @brief A container for blockchain checkpoints
+   *
+   * A checkpoint is a pre-defined hash for the block at a given height.
+   * Some of these are compiled-in, while others can be loaded at runtime
+   * either from a json file or via DNS from a checkpoint-hosting server.
+   */
+  class checkpoints
+  {
+  public:
+
+    /**
+     * @brief default constructor
+     */
+    checkpoints();
+
+    /**
+     * @brief adds a checkpoint to the container
+     *
+     * @param height the height of the block the checkpoint is for
+     * @param hash_str the hash of the block, as a string
+     * @param difficulty_str the cumulative difficulty of the block, as a string (optional)
+     *
+     * @return false if parsing the hash fails, or if the height is a duplicate
+     *         AND the existing checkpoint hash does not match the new one,
+     *         otherwise returns true
+     */
+    bool add_checkpoint(uint64_t height, const std::string& hash_str, const std::string& difficulty_str = "");
+
+    /**
+     * @brief checks if there is a checkpoint in the future
+     *
+     * This function checks if the height passed is lower than the highest
+     * checkpoint.
+     *
+     * @param height the height to check against
+     *
+     * @return false if no checkpoints, otherwise returns whether or not
+     *         the height passed is lower than the highest checkpoint.
+     */
+    bool is_in_checkpoint_zone(uint64_t height) const;
+
+    /**
+     * @brief checks if the given height and hash agree with the checkpoints
+     *
+     * This function checks if the given height and hash exist in the
+     * checkpoints container.  If so, it returns whether or not the passed
+     * parameters match the stored values.
+     *
+     * @param height the height to be checked
+     * @param h the hash to be checked
+     * @param is_a_checkpoint return-by-reference if there is a checkpoint at the given height
+     *
+     * @return true if there is no checkpoint at the given height,
+     *         true if the passed parameters match the stored checkpoint,
+     *         false otherwise
+     */
+    bool check_block(uint64_t height, const crypto::hash& h, bool& is_a_checkpoint) const;
+
+    /**
+     * @overload
+     */
+    bool check_block(uint64_t height, const crypto::hash& h) const;
+
+    /**
+     * @brief checks if alternate chain blocks should be kept for a given height
+     *
+     * this basically says if the blockchain is smaller than the first
+     * checkpoint then alternate blocks are allowed.  Alternatively, if the
+     * last checkpoint *before* the end of the current chain is also before
+     * the block to be added, then this is fine.
+     *
+     * @param blockchain_height the current blockchain height
+     * @param block_height the height of the block to be added as alternate
+     *
+     * @return true if alternate blocks are allowed given the parameters,
+     *         otherwise false
+     */
+    bool is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height) const;
+
+    /**
+     * @brief gets the highest checkpoint height
+     *
+     * @return the height of the highest checkpoint
+     */
+    uint64_t get_max_height() const;
+
+    /**
+     * @brief gets the highest checkpoint height less than the given block height
+     *
+     * @param block_height the reference block height
+     * @return the nearest checkpoint height below block_height, or 0 if none
+     */
+    uint64_t get_nearest_checkpoint_height(uint64_t block_height) const;
+
+    /**
+     * @brief gets the checkpoints container
+     *
+     * @return a const reference to the checkpoints container
+     */
+    const std::map<uint64_t, crypto::hash>& get_points() const;
+
+    /**
+     * @brief replaces the DNS checkpoints (Opacra)
+     *
+     * Hard-coded and JSON checkpoints (add_checkpoint) are permanent; DNS checkpoints are a
+     * separate set that each successful DNS read replaces, so a record withdrawn or corrected
+     * in DNS stops being enforced without a restart. get_points() and every check use both.
+     *
+     * @param points the checkpoints just read from DNS
+     *
+     * @return false, changing nothing, if a DNS point names a different hash at a height that
+     *         has a hard-coded or JSON checkpoint
+     */
+    bool set_dns_points(const std::map<uint64_t, crypto::hash>& points);
+
+    /**
+     * @brief gets the DNS checkpoints currently in force
+     */
+    const std::map<uint64_t, crypto::hash>& get_dns_points() const;
+
+    /**
+     * @brief Opacra: the serial number published with the DNS records read by
+     * load_checkpoints_from_dns (a "serial:N" record), or 0 if there was none
+     *
+     * Every change to the records publishes a higher serial. A node refuses a set whose serial
+     * is lower than the highest it has seen, so a stale or replayed DNS answer (still validly
+     * signed) can't lift an emergency checkpoint.
+     */
+    uint64_t get_dns_serial() const { return m_dns_serial; }
+
+    /**
+     * @brief Opacra: true if the DNS records carried an unusable serial: not a plain number
+     * of at most 19 digits (so "-1" and "+5" are refused), or more than one serial record.
+     * The caller also refuses a serial more than a day in the future.
+     */
+    bool dns_serial_bad() const { return m_dns_serial_bad; }
+
+    /**
+     * @brief Opacra: the serial record's text as published (for the log), at most 40 characters
+     */
+    const std::string& dns_serial_text() const { return m_dns_serial_text; }
+
+    /**
+     * @brief gets the difficulty checkpoints container
+     *
+     * @return a const reference to the difficulty checkpoints container
+     */
+    const std::map<uint64_t, difficulty_type>& get_difficulty_points() const;
+
+    /**
+     * @brief checks if our checkpoints container conflicts with another
+     *
+     * A conflict refers to a case where both checkpoint sets have a checkpoint
+     * for a specific height but their hashes for that height do not match.
+     *
+     * @param other the other checkpoints instance to check against
+     *
+     * @return false if any conflict is found, otherwise true
+     */
+    bool check_for_conflicts(const checkpoints& other) const;
+
+    /**
+     * @brief loads the default main chain checkpoints
+     * @param nettype network type
+     *
+     * @return true unless adding a checkpoint fails
+     */
+    bool init_default_checkpoints(network_type nettype);
+
+    /**
+     * @brief load new checkpoints
+     *
+     * Loads new checkpoints from the specified json file, as well as
+     * (optionally) from DNS.
+     *
+     * @param json_hashfile_fullpath path to the json checkpoints file
+     * @param nettype network type
+     * @param dns whether or not to load DNS checkpoints
+     *
+     * @return true if loading successful and no conflicts
+     */
+    bool load_new_checkpoints(const std::string &json_hashfile_fullpath, network_type nettype=MAINNET, bool dns=true);
+
+    /**
+     * @brief load new checkpoints from json
+     *
+     * @param json_hashfile_fullpath path to the json checkpoints file
+     *
+     * @return true if loading successful and no conflicts
+     */
+    bool load_checkpoints_from_json(const std::string &json_hashfile_fullpath);
+
+    /**
+     * @brief load new checkpoints from DNS
+     *
+     * @param nettype network type
+     *
+     * @return true if loading successful and no conflicts
+     */
+    bool load_checkpoints_from_dns(network_type nettype = MAINNET);
+
+  private:
+    void rebuild_points();
+
+    std::map<uint64_t, crypto::hash> m_points; //!< every checkpoint in force: m_base_points plus m_dns_points
+    std::map<uint64_t, crypto::hash> m_base_points; //!< hard-coded and JSON checkpoints (permanent)
+    std::map<uint64_t, crypto::hash> m_dns_points; //!< DNS checkpoints (replaced on each successful read)
+    std::map<uint64_t, difficulty_type> m_difficulty_points; //!< the difficulty checkpoints container
+    uint64_t m_dns_serial = 0; //!< the "serial:N" record read with the DNS checkpoints, 0 if none
+    bool m_dns_serial_bad = false; //!< the serial record wasn't a plain number, or there were several
+    std::string m_dns_serial_text; //!< the serial record's value as published (truncated)
+  };
+
+}

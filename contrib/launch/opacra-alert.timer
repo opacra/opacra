@@ -1,0 +1,12 @@
+# Every 5 minutes: check that the node answers, blocks arrive, peers are connected and
+# emergency checkpoints can be read. Installed by install-alerts.sh.
+[Unit]
+Description=Opacra seed alert watchdog, every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
