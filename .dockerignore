@@ -1,0 +1,5 @@
+# keep the build context small and avoid stale CMake caches inside the image
+build/
+dist/
+.git/
+**/__pycache__/

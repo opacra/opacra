@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# Builds Opacra for 64-bit Windows on Ubuntu 24.04 (WSL is fine) and packages
+#   dist/opacra-v<version>-win-x64.zip  (opacrad.exe, opacra-wallet-cli.exe, opacra-wallet-rpc.exe)
+#
+#   contrib/windows/build-windows.sh            # from the repository root
+#
+# The first run downloads and builds about ten libraries for Windows (Boost, OpenSSL,
+# ZeroMQ, libsodium, Unbound, ...) into contrib/depends: about 1-2 hours on 8-12 threads.
+# Later runs reuse them and only rebuild Opacra. Everything is linked statically, so the
+# .exe files need nothing else installed on Windows.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT"
+HOST=x86_64-w64-mingw32
+JOBS="${JOBS:-$(nproc)}"
+VERSION="$(grep -o 'DEF_MONERO_VERSION "[0-9.]*"' src/version.cpp.in | head -1 | cut -d'"' -f2)"
+LOG="$ROOT/build/windows-build.log"
+mkdir -p build dist
+exec > >(tee -a "$LOG") 2>&1
+echo "== Opacra v$VERSION for Windows, $JOBS jobs, log: $LOG  ($(date -u "+%Y-%m-%d %H:%M UTC"))"
+
+echo "== 1/4 build tools (asks for your Ubuntu password)"
+sudo apt-get update -qq
+sudo apt-get install -y -qq build-essential cmake git pkg-config autoconf automake libtool gperf \
+  curl bzip2 xz-utils python3 zip g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64
+# Monero needs the POSIX threading flavour of MinGW
+sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+
+echo "== 2/4 Windows libraries (contrib/depends; slow the first time)  $(date -u +%H:%M) UTC"
+make -C contrib/depends HOST="$HOST" -j"$JOBS"
+
+echo "== 3/4 Opacra  $(date -u +%H:%M) UTC"
+BUILD="build/$HOST/release"
+cmake -S . -B "$BUILD" \
+  -DCMAKE_TOOLCHAIN_FILE="$ROOT/contrib/depends/$HOST/share/toolchain.cmake" \
+  -DUSE_DEVICE_TREZOR=OFF -DBUILD_TESTS=OFF
+cmake --build "$BUILD" --target daemon simplewallet wallet_rpc_server -j"$JOBS"
+
+echo "== 4/4 package  $(date -u +%H:%M) UTC"
+NAME="opacra-v$VERSION-win-x64"
+STAGE="$(mktemp -d)/$NAME"
+mkdir -p "$STAGE"
+for b in opacrad opacra-wallet-cli opacra-wallet-rpc; do
+  cp "$BUILD/bin/$b.exe" "$STAGE/"
+  x86_64-w64-mingw32-strip "$STAGE/$b.exe"
+done
+# no home folder (and with it no user name) may be compiled into a published program; the
+# Windows libraries in contrib/depends keep the folder they were built in, so build outside /home
+if grep -a -l -E '/home/[A-Za-z0-9._-]+/' "$STAGE"/*.exe; then
+  echo "The programs above contain a /home/... build path (a user name). Build from a folder outside /home," >&2
+  echo "for example: sudo mkdir -p /build && sudo chown \$USER /build && git clone ~/opacra /build/opacra" >&2
+  exit 1
+fi
+cp LICENSE "$STAGE/"
+# Double-click launchers: "Start Opacra mainnet" (and "Start Opacra testnet") does everything a
+# miner needs in one window: the wallet the first time, then node and miner.
+cat > "$STAGE/Start Opacra testnet.bat" <<'BAT'
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
+cd /d "%~dp0"
+title Opacra testnet
+if exist testnet-wallet.address.txt goto start
+echo.
+echo  Welcome to the Opacra testnet. First, a wallet for the coins you mine.
+echo  Choose a password and type it twice. Then write down the 25 words it shows:
+echo  they are the only way to restore this wallet. Never share them.
+echo.
+opacra-wallet-cli.exe --testnet --offline --generate-new-wallet testnet-wallet --mnemonic-language English --create-address-file --command address
+if not exist testnet-wallet.address.txt goto failed
+echo.
+echo  Wallet ready. Written the 25 words down? Press any key to start mining.
+pause >nul
+:start
+rem The address file is checked before every use (it may have been copied from an older
+rem folder): only letters and digits, so nothing in it can run as a command.
+rem Exactly one line: findstr passes if any line matches, while set /p reads the first one.
+set "LINES=0"
+for /f "usebackq delims=" %%L in ("testnet-wallet.address.txt") do set /a LINES+=1 >nul
+if not "!LINES!"=="1" goto badaddress
+set "ADDR="
+set /p "ADDR=" < testnet-wallet.address.txt
+if not defined ADDR goto badaddress
+rem The wallet writes the address with no line ending, and findstr /x only matches a line that
+rem ends in one, so check a copy that has it. Delayed expansion writes the value as plain text.
+> "%TEMP%\opacra-address-check.txt" echo(!ADDR!
+findstr /r /x "T[0-9A-Za-z]*" "%TEMP%\opacra-address-check.txt" >nul || goto badaddress
+del "%TEMP%\opacra-address-check.txt" >nul 2>&1
+rem To choose how many CPU threads mine, put a number after the = sign on the next line,
+rem for example  set MINE_THREADS=4  . Leave it empty to use a quarter of this PC's threads.
+set MINE_THREADS=
+if "%MINE_THREADS%"=="" set /a MINE_THREADS=%NUMBER_OF_PROCESSORS%/4
+set /a THREADS=%MINE_THREADS%
+if %THREADS% LSS 1 set THREADS=1
+rem Emergency checkpoints: the seeds, pools and exchanges follow them; this node only warns.
+rem To follow them too (opacra.org asks for it during an attack), change the next line to  set ENFORCE_CHECKPOINTS=1
+set ENFORCE_CHECKPOINTS=0
+set "CHECKPOINTS="
+if "%ENFORCE_CHECKPOINTS%"=="1" set "CHECKPOINTS=--enforce-dns-checkpointing"
+cls
+echo.
+echo  Opacra testnet: joining the network and mining with %THREADS% threads to your wallet
+echo  !ADDR!
+echo.
+if "%ENFORCE_CHECKPOINTS%"=="1" echo  Following the project's emergency checkpoints.
+if not "%ENFORCE_CHECKPOINTS%"=="1" echo  Emergency checkpoints: this node only warns. To follow them, edit this file: set ENFORCE_CHECKPOINTS=1
+echo.
+echo  Leave this window open while you mine; close it to stop. Mining starts once the
+echo  node has caught up, usually within a few minutes. Type  status  and press Enter
+echo  to check. To see your coins, double-click "Open testnet wallet".
+echo  To mine with more or fewer threads, see README.txt.
+echo.
+opacrad.exe --testnet %CHECKPOINTS% --start-mining "!ADDR!" --mining-threads %THREADS%
+pause
+exit /b
+:badaddress
+del "%TEMP%\opacra-address-check.txt" >nul 2>&1
+echo.
+echo  testnet-wallet.address.txt does not hold an Opacra testnet address (letters and
+echo  digits only, starting with T). Copy the right file from your old Opacra folder, then
+echo  double-click "Start Opacra testnet" again.
+pause
+exit /b
+:failed
+echo.
+echo  The wallet was not created. Close this window and double-click "Start Opacra testnet" again.
+pause
+BAT
+cat > "$STAGE/Start Opacra mainnet.bat" <<'BAT'
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
+cd /d "%~dp0"
+title Opacra
+if exist mainnet-wallet.address.txt goto start
+echo.
+echo  Welcome to Opacra. First, a wallet for the coins you mine.
+echo  Choose a password and type it twice. Then write down the 25 words it shows, on
+echo  paper: they are the only way to restore this wallet and its coins. Never share them;
+echo  nobody from Opacra will ever ask for them.
+echo.
+opacra-wallet-cli.exe --offline --generate-new-wallet mainnet-wallet --mnemonic-language English --create-address-file --command address
+if not exist mainnet-wallet.address.txt goto failed
+echo.
+echo  Wallet ready. Written the 25 words down on paper? Press any key to start mining.
+pause >nul
+:start
+rem The address file is checked before every use (it may have been copied from an older
+rem folder): only letters and digits, so nothing in it can run as a command.
+rem Exactly one line: findstr passes if any line matches, while set /p reads the first one.
+set "LINES=0"
+for /f "usebackq delims=" %%L in ("mainnet-wallet.address.txt") do set /a LINES+=1 >nul
+if not "!LINES!"=="1" goto badaddress
+set "ADDR="
+set /p "ADDR=" < mainnet-wallet.address.txt
+if not defined ADDR goto badaddress
+rem The wallet writes the address with no line ending, and findstr /x only matches a line that
+rem ends in one, so check a copy that has it. Delayed expansion writes the value as plain text.
+rem Mainnet addresses start with P; a testnet wallet (T) copied here is refused.
+> "%TEMP%\opacra-address-check.txt" echo(!ADDR!
+findstr /r /x "P[0-9A-Za-z]*" "%TEMP%\opacra-address-check.txt" >nul || goto badaddress
+del "%TEMP%\opacra-address-check.txt" >nul 2>&1
+rem To choose how many CPU threads mine, put a number after the = sign on the next line,
+rem for example  set MINE_THREADS=4  . Leave it empty to use a quarter of this PC's threads.
+set MINE_THREADS=
+if "%MINE_THREADS%"=="" set /a MINE_THREADS=%NUMBER_OF_PROCESSORS%/4
+set /a THREADS=%MINE_THREADS%
+if %THREADS% LSS 1 set THREADS=1
+rem Emergency checkpoints: the seeds, pools and exchanges follow them; this node only warns.
+rem To follow them too (opacra.org asks for it during an attack), change the next line to  set ENFORCE_CHECKPOINTS=1
+set ENFORCE_CHECKPOINTS=0
+set "CHECKPOINTS="
+if "%ENFORCE_CHECKPOINTS%"=="1" set "CHECKPOINTS=--enforce-dns-checkpointing"
+cls
+echo.
+echo  Opacra mainnet: joining the network and mining with %THREADS% threads to your wallet
+echo  !ADDR!
+echo.
+if "%ENFORCE_CHECKPOINTS%"=="1" echo  Following the project's emergency checkpoints.
+if not "%ENFORCE_CHECKPOINTS%"=="1" echo  Emergency checkpoints: this node only warns. To follow them, edit this file: set ENFORCE_CHECKPOINTS=1
+echo.
+echo  Leave this window open while you mine; close it to stop. Mining starts once the
+echo  node has caught up, usually within a few minutes. Type  status  and press Enter
+echo  to check. To see your coins, double-click "Open Opacra wallet".
+echo  To mine with more or fewer threads, see README.txt.
+echo.
+opacrad.exe %CHECKPOINTS% --start-mining "!ADDR!" --mining-threads %THREADS%
+pause
+exit /b
+:badaddress
+del "%TEMP%\opacra-address-check.txt" >nul 2>&1
+echo.
+echo  mainnet-wallet.address.txt does not hold an Opacra mainnet address (letters and
+echo  digits only, starting with P). A testnet wallet can't be used here: testnet coins
+echo  never become mainnet coins. Copy the right file from your old Opacra folder, or
+echo  delete the file to make a new wallet, then double-click "Start Opacra mainnet" again.
+pause
+exit /b
+:failed
+echo.
+echo  The wallet was not created. Close this window and double-click "Start Opacra mainnet" again.
+pause
+BAT
+cat > "$STAGE/Open Opacra wallet.bat" <<'BAT'
+@echo off
+setlocal EnableExtensions
+cd /d "%~dp0"
+title Opacra wallet
+if exist mainnet-wallet.keys goto open
+echo  No wallet yet: double-click "Start Opacra mainnet" first.
+pause
+exit /b
+:open
+echo  Type your wallet password. If it asks about background mining, type N: you are
+echo  already mining in the other window. Useful commands: balance, address,
+echo  transfer ADDRESS AMOUNT, exit. Keep "Start Opacra mainnet" running alongside.
+echo  When it says new coins have arrived, type  refresh  and enter your password when
+echo  the wallet asks for it. Never type the password after the [wallet ...]: prompt.
+echo.
+opacra-wallet-cli.exe --wallet-file mainnet-wallet
+pause
+BAT
+cat > "$STAGE/Open testnet wallet.bat" <<'BAT'
+@echo off
+setlocal EnableExtensions
+cd /d "%~dp0"
+title Opacra testnet wallet
+if exist testnet-wallet.keys goto open
+echo  No wallet yet: double-click "Start Opacra testnet" first.
+pause
+exit /b
+:open
+echo  Type your wallet password. If it asks about background mining, type N: you are
+echo  already mining in the other window. Useful commands: balance, address,
+echo  transfer ADDRESS AMOUNT, exit. Keep "Start Opacra testnet" running alongside.
+echo  When it says new coins have arrived, type  refresh  and enter your password when
+echo  the wallet asks for it. Never type the password after the [wallet ...]: prompt.
+echo.
+opacra-wallet-cli.exe --testnet --wallet-file testnet-wallet
+pause
+BAT
+cat > "$STAGE/README.txt" <<TXT
+Opacra v$VERSION for Windows (64-bit)
+
+Mine Opacra (OPCA):
+
+  1. Unzip this folder.
+  2. Double-click "Start Opacra mainnet". Allow it through Windows Firewall if asked.
+     The first time it creates your wallet: choose a password and write down the 25
+     words it shows, on paper. Then it joins the network and mines. Leave the window open.
+  3. To see your coins or send some, double-click "Open Opacra wallet" and type
+     balance   or   transfer ADDRESS AMOUNT
+     Mined coins unlock after 60 blocks (about 30 minutes).
+     When the wallet says new coins have arrived, type  refresh  and enter your
+     password when the wallet asks for it (never after the [wallet ...]: prompt).
+
+The public testnet (coins with no value, for trying things out) works the same way with
+"Start Opacra testnet" and "Open testnet wallet". Testnet coins never become mainnet coins.
+
+Mining threads: the miner uses a quarter of this PC's CPU threads, which keeps the
+PC cool and usable. To change it, right-click "Start Opacra mainnet", choose Edit
+(or Show more options, Edit), and put a number after  set MINE_THREADS=  , for
+example  set MINE_THREADS=4  . Save, then start it again. If the CPU runs hotter
+than about 85 C, use fewer threads.
+
+"No incoming connections" or "No other node has connected to this one yet": normal
+on a home connection behind a router. Mining and syncing work as usual; nothing to do.
+
+Emergency checkpoints: the project publishes them (DNSSEC-signed records under opacra.org and
+opacra.com, which must agree) only to stop an attack, and lists every one on opacra.org. The
+seeds, pools and exchanges follow them; your node only warns if its chain disagrees. If
+opacra.org asks miners to follow them during an attack: right-click "Start Opacra mainnet",
+Edit, change the line  set ENFORCE_CHECKPOINTS=0  to  set ENFORCE_CHECKPOINTS=1 , save, and
+start it again. A wrong record costs no blocks: once it is withdrawn, your node returns to them.
+
+Updates: close the miner window (type exit) and wait until it has closed. Unzip the new
+version into its own folder, then copy these three files from your old folder into the new
+one before starting it:
+  mainnet-wallet   mainnet-wallet.keys   mainnet-wallet.address.txt
+(and the testnet-wallet files, if you test). The blockchain is stored outside the folder,
+so it is not downloaded again.
+
+Files:
+  Start Opacra mainnet.bat   wallet (first time), node and miner in one window
+  Open Opacra wallet.bat     your wallet
+  Start Opacra testnet.bat   the same for the public testnet
+  Open testnet wallet.bat    your testnet wallet
+  opacrad.exe                full node and miner
+  opacra-wallet-cli.exe      command-line wallet
+  opacra-wallet-rpc.exe      wallet JSON-RPC server
+
+The programs are not code-signed yet. Windows may say it protected your PC: choose
+More info, then Run anyway. On some newer Windows 11 PCs, Smart App Control blocks
+unsigned programs completely ("Part of this app has been blocked"); Opacra cannot
+run on such a PC until releases are signed. Download Opacra only from https://opacra.org
+and check it against the signed checksums. Nobody from Opacra will ever ask for your
+25 words or your wallet password. Block explorer: https://explorer.opacra.org
+TXT
+# Windows line endings for the files people open in Notepad or run as batch files
+sed -i 's/$/\r/' "$STAGE/README.txt" "$STAGE/Start Opacra testnet.bat" "$STAGE/Open testnet wallet.bat" \
+  "$STAGE/Start Opacra mainnet.bat" "$STAGE/Open Opacra wallet.bat"
+(cd "$STAGE" && sha256sum *.exe > SHA256SUMS)
+# zip stores local clock times with no time zone: write them in UTC (TZ=UTC, -X drops extra fields)
+(cd "$(dirname "$STAGE")" && rm -f "$ROOT/dist/$NAME.zip" && TZ=UTC zip -qrX "$ROOT/dist/$NAME.zip" "$NAME")
+(cd dist && sha256sum "$NAME.zip" | tee "$NAME.zip.sha256")
+echo "== done: dist/$NAME.zip  ($(date -u "+%Y-%m-%d %H:%M UTC"))"

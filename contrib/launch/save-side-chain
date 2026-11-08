@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""Save the honest blocks after a chain rewrite, and put a node back on them.
+
+After a deep reorganisation (a 51% attack that has landed) every node has switched to the
+attacker's chain and keeps the honest blocks only as a side chain, which it drops when it
+restarts (unless it runs with --keep-alt-blocks). Run this on the seed BEFORE restarting
+anything:
+
+  save-side-chain save --network mainnet|testnet [--rpc HOST:PORT] [--out honest-blocks.json]
+      saves the longest side chain (normally the honest one) block by block, oldest first,
+      and prints the split height and the first honest block: the emergency checkpoint to
+      publish (docs/EMERGENCY_CHECKPOINTS.md, step 2)
+
+  save-side-chain restore honest-blocks.json --network mainnet|testnet [--rpc ...]
+      for a node stuck on the attacker's blocks below a checkpoint: winds it back to the
+      split (pop_blocks) and resubmits the saved honest blocks in order.
+      Order that works (a node ignores blocks it still holds as side blocks, and refuses
+      submitted blocks while it counts itself out of sync, answering BUSY):
+        1. save   2. restart the node with --offline (this also drops its side blocks)
+        3. restore   4. restart the node normally
+
+--network is required: it picks the node's RPC port (mainnet 29961, testnet
+29971) and the tool refuses to run if the node answering is on another network, so an
+emergency on mainnet can never save testnet blocks or print a testnet checkpoint. The saved
+file records its network and restore refuses a file from another network.
+
+Tested in attack rehearsals on private networks and a regtest save/restore.
+Standard library only.
+"""
+import argparse
+import json
+import sys
+import urllib.request
+
+
+SHARED_BLOCKS = 10   # blocks below the split saved too
+RPC_PORT = {"mainnet": 29961, "testnet": 29971, "stagenet": 29981, "fakechain": 29961}
+DNS_NAME = {"mainnet": "checkpoints", "testnet": "testpoints"}
+
+
+def check_network(a):
+    """Refuse to work on a node of another network than the one asked for."""
+    if not a.rpc:
+        a.rpc = "127.0.0.1:%d" % RPC_PORT[a.network]
+    info = call(a.rpc, "get_info")
+    nettype = info.get("nettype") or ("testnet" if info.get("testnet") else "stagenet" if info.get("stagenet")
+                                      else "mainnet")
+    if nettype != a.network:
+        sys.exit("The node at %s is on %s, not %s: stopping. Check --network and --rpc." % (a.rpc, nettype, a.network))
+    print("Node at %s: %s, height %d" % (a.rpc, nettype, info["height"]))
+
+
+def call(rpc, method, params=None, path="json_rpc"):
+    if path == "json_rpc":
+        body = {"jsonrpc": "2.0", "id": "0", "method": method, "params": params or {}}
+    else:
+        body = params or {}
+    req = urllib.request.Request("http://%s/%s" % (rpc, path), data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=120) as r:
+        out = json.loads(r.read().decode())
+    if path == "json_rpc":
+        if "error" in out:
+            raise SystemExit("%s: %s" % (method, out["error"].get("message")))
+        return out["result"]
+    return out
+
+
+def save(a):
+    check_network(a)
+    chains = call(a.rpc, "get_alternate_chains").get("chains", [])
+    if not chains:
+        sys.exit("This node has no side chain: nothing to save (was it restarted since the rewrite?).")
+    def work(c):  # wide_difficulty is a hex string such as "0xb"
+        w = c.get("wide_difficulty")
+        return int(w, 16) if isinstance(w, str) and w else int(c.get("difficulty") or 0)
+    c = max(chains, key=lambda c: (c["length"], work(c)))
+    blocks = []
+    for h in reversed(c["block_hashes"]):           # the node lists them newest first
+        b = call(a.rpc, "get_block", {"hash": h})
+        blocks.append({"height": b["block_header"]["height"], "hash": h, "blob": b["blob"]})
+    blocks.sort(key=lambda b: b["height"])
+    heights = [b["height"] for b in blocks]
+    if heights != list(range(heights[0], heights[0] + len(heights))):
+        sys.exit("The side chain has gaps; not saved.")
+    # also the blocks both chains share just below the split: a node that enforces the
+    # checkpoint winds back 2 blocks below it, so restore needs these to reach the split
+    shared = []
+    for h in range(max(1, heights[0] - SHARED_BLOCKS), heights[0]):
+        b = call(a.rpc, "get_block", {"height": h})
+        shared.append({"height": h, "hash": b["block_header"]["hash"], "blob": b["blob"]})
+    with open(a.out, "w") as f:
+        json.dump({"network": a.network, "split_after": heights[0] - 1, "parent": c.get("main_chain_parent_block"), "shared": shared,
+                   "blocks": blocks}, f)
+    print("Saved %d side-chain blocks (heights %d to %d) and the %d shared blocks below them to %s" % (
+        len(blocks), heights[0], heights[-1], len(shared), a.out))
+    if len(chains) > 1:
+        print("Note: %d side chains exist; saved the longest. Check it is the honest one." % len(chains))
+    print("First block after the split, the emergency checkpoint to publish (%s, TXT record %s):" % (
+        a.network, DNS_NAME.get(a.network, "-")))
+    print("  %d:%s" % (blocks[0]["height"], blocks[0]["hash"]))
+
+
+def submit(a, b):
+    r = call(a.rpc, "submit_block", [b["blob"]])
+    status = r.get("status")
+    if status != "OK":
+        sys.exit("Block %d not accepted (%s). If BUSY: restart the node with --offline, run this again, "
+                 "then restart it normally." % (b["height"], status))
+    # "OK" also covers a block the node only stored (as a side or orphan block): check it moved
+    top = call(a.rpc, "get_info")
+    if top["top_block_hash"] != b["hash"]:
+        sys.exit("Block %d was not added to the chain (node height %d, top %s). If the node still holds the "
+                 "saved blocks as side blocks: restart it with --offline (that drops them) and run restore "
+                 "again." % (b["height"], top["height"], top["top_block_hash"]))
+
+
+def restore(a):
+    with open(a.file) as f:
+        d = json.load(f)
+    if d.get("network") != a.network:
+        sys.exit("%s holds %s blocks, not %s: stopping." % (a.file, d.get("network") or "unlabelled (older)", a.network))
+    check_network(a)
+    blocks = d["blocks"]
+    first = blocks[0]["height"]
+    height = call(a.rpc, "get_info")["height"]
+    if height > first:
+        r = call(a.rpc, "pop_blocks", {"nblocks": height - first}, path="pop_blocks")
+        print("pop_blocks: %s, height now %s" % (r.get("status"), r.get("height")))
+    elif height < first:
+        # the node wound back below the split (a checkpoint rolls back 2 blocks below it):
+        # first give it the shared blocks it is missing
+        for b in d.get("shared", []):
+            if b["height"] >= call(a.rpc, "get_info")["height"]:
+                submit(a, b)
+        if call(a.rpc, "get_info")["height"] != first:
+            sys.exit("The node is at height %d, below the saved blocks (from %d). Let it sync to the split "
+                     "first, or save again from a node that has the shared blocks." % (
+                         call(a.rpc, "get_info")["height"], first))
+    ok = 0
+    for b in blocks:
+        submit(a, b)
+        ok += 1
+    info = call(a.rpc, "get_info")
+    print("Resubmitted %d honest blocks; node height %d, top %s" % (ok, info["height"], info["top_block_hash"]))
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("save")
+    nets = ["mainnet", "testnet", "stagenet", "fakechain"]
+    s.add_argument("--network", required=True, choices=nets)
+    s.add_argument("--rpc", default=None, help="default: this machine, the network's RPC port")
+    s.add_argument("--out", default="honest-blocks.json")
+    r = sub.add_parser("restore")
+    r.add_argument("file")
+    r.add_argument("--network", required=True, choices=nets)
+    r.add_argument("--rpc", default=None, help="default: this machine, the network's RPC port")
+    a = ap.parse_args()
+    save(a) if a.cmd == "save" else restore(a)
+
+
+if __name__ == "__main__":
+    main()
